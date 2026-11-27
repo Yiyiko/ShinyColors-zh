@@ -662,22 +662,23 @@ export function registerDefaultApiRoutes(
     if (!noWrapVoiceCache && (typeTextMap.size > 0 || commStoryMap.size > 0)) {
       noWrapVoiceCache = new Map<string, string>();
       for (const [k, v] of typeTextMap) {
-        const compact = k.replace(/\n+/g, '');
+        const compact = k.replace(/[\s\u3000]+/g, '');
         if (compact && !noWrapVoiceCache.has(compact)) noWrapVoiceCache.set(compact, v);
       }
       for (const [k, v] of commStoryMap) {
-        const compact = k.replace(/\n+/g, '');
+        const compact = k.replace(/[\s\u3000]+/g, '');
         if (compact && !noWrapVoiceCache.has(compact)) noWrapVoiceCache.set(compact, v);
       }
     }
 
+    const spMap = mergedSpeakerMap ?? nameMap;
     for (const entry of list) {
       if (!entry || typeof entry !== 'object') continue;
       const rec = entry as Record<string, unknown>;
       if (typeof rec[field] === 'string' && (rec[field] as string).trim()) {
         const raw = rec[field] as string;
         const norm = normalizeLookupText(raw);
-        const compact = norm.replace(/\n+/g, '');
+        const compact = norm.replace(/[\s\u3000]+/g, '');
         const hit =
           typeTextMap.get(norm) ??
           commStoryMap.get(norm) ??
@@ -688,8 +689,16 @@ export function registerDefaultApiRoutes(
           editor?.recordUntranslatedVoice(raw);
         }
       }
-      if (translateSpeakerName && typeof rec.speakerName === 'string' && rec.speakerName.trim()) {
-        rec.speakerName = translateSpeaker(rec.speakerName, mergedSpeakerMap ?? nameMap);
+      if (translateSpeakerName) {
+        for (const nameKey of ['speakerName', 'firstName', 'name'] as const) {
+          if (typeof rec[nameKey] === 'string' && (rec[nameKey] as string).trim()) {
+            const origName = rec[nameKey] as string;
+            const nextName = translateSpeaker(origName, spMap);
+            if (nextName !== origName) {
+              rec[nameKey] = nextName;
+            }
+          }
+        }
       }
     }
   };
@@ -702,7 +711,11 @@ export function registerDefaultApiRoutes(
       return;
     }
     const rec = root as Record<string, unknown>;
-    if (typeof rec.comment === 'string' && rec.comment.trim()) {
+    if (
+      (typeof rec.comment === 'string' && rec.comment.trim()) ||
+      (typeof rec.firstName === 'string' && rec.firstName.trim()) ||
+      (typeof rec.speakerName === 'string' && rec.speakerName.trim())
+    ) {
       out.push(rec);
     }
     for (const val of Object.values(rec)) {

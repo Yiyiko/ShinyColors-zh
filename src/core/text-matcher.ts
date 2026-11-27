@@ -42,14 +42,14 @@ export class PixiTextMatcher {
   private rebuildNoWrapIndexes(): void {
     this.commonNoWrapMap.clear();
     for (const [k, v] of this.commonMap) {
-      const compact = k.replace(/\n+/g, '');
+      const compact = k.replace(/[\s\u3000]+/g, '');
       if (compact && !this.commonNoWrapMap.has(compact)) {
         this.commonNoWrapMap.set(compact, v);
       }
     }
     this.typeTextNoWrapMap.clear();
     for (const [k, v] of this.typeTextMap) {
-      const compact = k.replace(/\n+/g, '');
+      const compact = k.replace(/[\s\u3000]+/g, '');
       if (compact && !this.typeTextNoWrapMap.has(compact)) {
         this.typeTextNoWrapMap.set(compact, v);
       }
@@ -80,7 +80,7 @@ export class PixiTextMatcher {
     if (typeof text !== 'string' || !text.trim()) return text;
     const key = normalizeLookupText(text);
     const hit =
-      this.typeTextMap.get(key) ?? this.typeTextNoWrapMap.get(key.replace(/\n+/g, ''));
+      this.typeTextMap.get(key) ?? this.typeTextNoWrapMap.get(key.replace(/[\s\u3000]+/g, ''));
     const result = hit ?? text;
     this.recordTyping(result);
     return result;
@@ -91,11 +91,12 @@ export class PixiTextMatcher {
     if (text.startsWith(STORY_TAG_MARKER)) return text;
     if (this.isTypingPrefix(text)) return text;
     const key = normalizeLookupText(text);
+    const compact = key.replace(/[\s\u3000]+/g, '');
     return (
       this.commonMap.get(key) ??
-      this.commonNoWrapMap.get(key.replace(/\n+/g, '')) ??
+      this.commonNoWrapMap.get(compact) ??
       this.typeTextMap.get(key) ??
-      this.typeTextNoWrapMap.get(key.replace(/\n+/g, '')) ??
+      this.typeTextNoWrapMap.get(compact) ??
       text
     );
   }

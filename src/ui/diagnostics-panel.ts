@@ -189,6 +189,7 @@ export class DiagnosticsPanel {
     private readonly actions?: {
       onClearCache?: () => Promise<void> | void;
       onToggleEnabled?: () => void;
+      getUntranslatedVoicesCsv?: () => { count: number; csv: string | null };
     },
   ) {}
 
@@ -272,6 +273,8 @@ export class DiagnosticsPanel {
       ? `<div><code>${s.lastStory.path}</code><br/>覆盖率：<b>${s.lastStory.matchedLines}/${s.lastStory.totalLines} (${s.lastStory.coveragePct}%)</b> · 译者：${s.lastStory.translator || '未知'}${s.lastStory.isAI ? ' [AI]' : ''}</div>`
       : '<div class="muted">尚未加载剧情</div>';
 
+    const voiceInfo = this.actions?.getUntranslatedVoicesCsv?.() ?? { count: 0, csv: null };
+
     this.shadow.innerHTML = `
       <style>
         .card {
@@ -283,7 +286,7 @@ export class DiagnosticsPanel {
         }
         .hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
         .title { font-weight: 700; font-size: 13px; color: #38bdf8; }
-        .btns { display: flex; gap: 6px; }
+        .btns { display: flex; gap: 6px; flex-wrap: wrap; }
         button {
           background: #1e293b; color: #e2e8f0; border: 1px solid #475569;
           border-radius: 6px; padding: 3px 8px; cursor: pointer; font-size: 11px;
@@ -301,6 +304,7 @@ export class DiagnosticsPanel {
           <div class="title">${APP_NAME} v${s.version} 诊断面板</div>
           <div class="btns">
             <button id="btn-copy">复制报告</button>
+            <button id="btn-voices">复制未翻语音(${voiceInfo.count})</button>
             <button id="btn-clear">清缓存</button>
             <button id="btn-close">关闭</button>
           </div>
@@ -326,6 +330,12 @@ export class DiagnosticsPanel {
     this.shadow.getElementById('btn-copy')?.addEventListener('click', () => {
       const text = JSON.stringify(this.store.getSnapshot(), null, 2);
       void navigator.clipboard?.writeText(text);
+    });
+    this.shadow.getElementById('btn-voices')?.addEventListener('click', () => {
+      const latest = this.actions?.getUntranslatedVoicesCsv?.();
+      if (latest?.csv) {
+        void navigator.clipboard?.writeText(latest.csv);
+      }
     });
     this.shadow.getElementById('btn-clear')?.addEventListener('click', () => {
       void this.actions?.onClearCache?.();

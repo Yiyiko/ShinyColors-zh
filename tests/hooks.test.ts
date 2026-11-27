@@ -130,6 +130,27 @@ describe('P3 feature hooks end-to-end with mock game modules', () => {
 
     const exported = editor.exportLastStoryCsv('测试译者');
     expect(exported?.content).toContain('info,mypage_communications/1001.json,,');
+
+    // Prelude / local-master home voice JSONs loaded via SCENARIO.load
+    const voiceScenario = {
+      load: vi.fn(async (_p: string) => [
+        { id: '1', comment: 'こんにちは　世界', speakerName: '灯織' },
+        { id: '2', comment: 'プレリュード未翻訳ボイス' },
+      ]),
+    };
+    installStoryHook({
+      modules: makeModules({ SCENARIO: voiceScenario }),
+      repo,
+      diag,
+      editor,
+      showStoryHints: false,
+    });
+    const voices = (await voiceScenario.load(
+      '/assets/sounds/json/prelude_mypage_voices/002/mypage_comments.json',
+    )) as any[];
+    expect(voices[0].comment).toBe('你好\n世界');
+    expect(voices[0].speakerName).toBe('灯织');
+    expect(editor.getUntranslatedVoiceCount()).toBe(1);
   });
 
   it('installs phrase hook safely before init() is called', async () => {
@@ -368,8 +389,9 @@ describe('P3 feature hooks end-to-end with mock game modules', () => {
         userHomeDeck: {
           userHomeDeckMembers: [
             {
+              character: { firstName: '灯織' },
               mypageComments: [
-                { comment: 'こんにちは世界', speakerName: '灯織' },
+                { comment: 'こんにちは　世界', speakerName: '灯織' },
                 { comment: '未翻訳ボイス', speakerName: '灯織' },
               ],
             },
@@ -378,6 +400,7 @@ describe('P3 feature hooks end-to-end with mock game modules', () => {
       },
     });
     expect(myPageBody.producerDesk.messages[0]).toBe('进行1次Fes');
+    expect(myPageBody.userHomeDeck.userHomeDeckMembers[0].character.firstName).toBe('灯织');
     expect(myPageBody.userHomeDeck.userHomeDeckMembers[0].mypageComments[0].comment).toBe('你好\n世界');
     expect(myPageBody.userHomeDeck.userHomeDeckMembers[0].mypageComments[0].speakerName).toBe('灯织');
     expect(editor.getUntranslatedVoiceCount()).toBe(1);

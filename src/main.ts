@@ -53,6 +53,10 @@ async function bootstrap(): Promise<void> {
       const next = toggleEnabledFlag();
       diag.setEnabled(next);
     },
+    getUntranslatedVoicesCsv: () => ({
+      count: editor.getUntranslatedVoiceCount(),
+      csv: editor.exportUntranslatedVoicesCsv(),
+    }),
   });
 
   registerUserscriptMenus({
