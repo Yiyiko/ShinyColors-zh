@@ -610,17 +610,54 @@ export function registerDefaultApiRoutes(
 
   // 9. Character Voice Bubbles & Comments (myPage / fesTop / produce / gasha / album)
   let noWrapVoiceCache: Map<string, string> | null = null;
+  let mergedSpeakerMap: Map<string, string> | null = null;
+  const buildSpeakerMap = (
+    nameMap: ReadonlyMap<string, string>,
+    idolNameMap: ReadonlyMap<string, string>,
+  ): Map<string, string> => {
+    const out = new Map<string, string>(nameMap);
+    for (const [k, v] of idolNameMap) {
+      if (!out.has(k)) out.set(k, v);
+      const compactK = k.replace(/\s+/g, '');
+      const compactV = v.replace(/\s+/g, '');
+      if (compactK && !out.has(compactK)) out.set(compactK, compactV);
+      const partsK = k.split(/\s+/);
+      const partsV = v.split(/\s+/);
+      if (partsK.length === 2 && partsV.length === 2) {
+        if (partsK[1] && !out.has(partsK[1])) out.set(partsK[1], partsV[1]);
+      }
+    }
+    // CoMETIK & newer idols not yet in upstream etc/idol-name.csv
+    const extras: ReadonlyArray<[string, string]> = [
+      ['鈴木 羽那', '铃木 羽那'],
+      ['鈴木羽那', '铃木羽那'],
+      ['羽那', '羽那'],
+      ['郁田 はるき', '郁田 春希'],
+      ['郁田はるき', '郁田春希'],
+      ['はるき', '春希'],
+    ];
+    for (const [k, v] of extras) {
+      if (!out.has(k)) out.set(k, v);
+    }
+    return out;
+  };
+
   const translateVoiceField = async (
     list: unknown[],
     field = 'comment',
     translateSpeakerName = false,
   ): Promise<void> => {
     if (list.length === 0) return;
-    const [typeTextMap, commStoryMap, nameMap] = await Promise.all([
+    const [typeTextMap, commStoryMap, nameMap, idolNameMap] = await Promise.all([
       repo.getTypeTextMap(),
       repo.getCommStoryMap(),
       repo.getNameMap(),
+      repo.getIdolNameMap(),
     ]);
+
+    if (!mergedSpeakerMap && (nameMap.size > 0 || idolNameMap.size > 0)) {
+      mergedSpeakerMap = buildSpeakerMap(nameMap, idolNameMap);
+    }
 
     if (!noWrapVoiceCache && (typeTextMap.size > 0 || commStoryMap.size > 0)) {
       noWrapVoiceCache = new Map<string, string>();
@@ -652,43 +689,40 @@ export function registerDefaultApiRoutes(
         }
       }
       if (translateSpeakerName && typeof rec.speakerName === 'string' && rec.speakerName.trim()) {
-        rec.speakerName = translateSpeaker(rec.speakerName, nameMap);
+        rec.speakerName = translateSpeaker(rec.speakerName, mergedSpeakerMap ?? nameMap);
+      }
+    }
+  };
+
+  const collectVoiceObjects = (root: unknown, out: unknown[], seen = new Set<unknown>(), depth = 0): void => {
+    if (!root || typeof root !== 'object' || depth > 8 || seen.has(root)) return;
+    seen.add(root);
+    if (Array.isArray(root)) {
+      for (const item of root) collectVoiceObjects(item, out, seen, depth + 1);
+      return;
+    }
+    const rec = root as Record<string, unknown>;
+    if (typeof rec.comment === 'string' && rec.comment.trim()) {
+      out.push(rec);
+    }
+    for (const val of Object.values(rec)) {
+      if (val && typeof val === 'object') {
+        collectVoiceObjects(val, out, seen, depth + 1);
       }
     }
   };
 
   const handleMyPageVoices: ApiHandler = async (data) => {
-    const deck = data.userHomeDeck as Record<string, unknown> | undefined;
-    if (!deck) return;
     const list: unknown[] = [];
-
-    const animMember = deck.userHomeDeckAnimationMember as { mypageComments?: unknown[] } | undefined;
-    if (Array.isArray(animMember?.mypageComments)) {
-      list.push(...animMember.mypageComments);
+    if (data.userHomeDeck) {
+      collectVoiceObjects(data.userHomeDeck, list);
     }
-
-    const animDeck = deck.userHomeAnimationDeck as
-      | { userHomeAnimationDeckMembers?: Array<{ mypageComments?: unknown[]; mypageConversations?: Array<{ mypageConversationComments?: unknown[] }> }> }
-      | undefined;
-    if (Array.isArray(animDeck?.userHomeAnimationDeckMembers)) {
-      for (const m of animDeck.userHomeAnimationDeckMembers) {
-        if (Array.isArray(m?.mypageComments)) list.push(...m.mypageComments);
-        if (Array.isArray(m?.mypageConversations)) {
-          for (const conv of m.mypageConversations) {
-            if (Array.isArray(conv?.mypageConversationComments)) {
-              list.push(...conv.mypageConversationComments);
-            }
-          }
-        }
-      }
+    if (data.userHomeAnimationDeck) {
+      collectVoiceObjects(data.userHomeAnimationDeck, list);
     }
-
-    if (Array.isArray(deck.userHomeDeckMembers)) {
-      for (const m of deck.userHomeDeckMembers as Array<{ mypageComments?: unknown[] }>) {
-        if (Array.isArray(m?.mypageComments)) list.push(...m.mypageComments);
-      }
+    if (data.userHomeUnitDeck) {
+      collectVoiceObjects(data.userHomeUnitDeck, list);
     }
-
     await translateVoiceField(list, 'comment', true);
   };
 

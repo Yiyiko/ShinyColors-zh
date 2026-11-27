@@ -53,8 +53,8 @@ function createMockRepo(): DataRepository {
     'data/common.csv': 'text,trans\n昇格ライン,升格分数线\n',
     'data/type-text.csv': 'text,trans\n頑張ろう！,加油！\nこんにちは\\n世界,你好\\n世界\n',
     'data/comm-story.csv': 'text,trans\nお疲れ様,辛苦了\n',
-    'data/name.csv': 'name,trans\nプロデューサー,制作人\n真乃,真乃\n灯織,灯织\n',
-    'data/etc/idol-name.csv': 'name,trans\n櫻木真乃,樱木真乃\n',
+    'data/name.csv': 'name,trans\nプロデューサー,制作人\n真乃,真乃\n',
+    'data/etc/idol-name.csv': 'name,trans\n櫻木真乃,樱木真乃\n風野 灯織,风野 灯织\n',
     'data/etc/mission.csv': 'text,trans,type\nフェスをプレイしよう,进行1次Fes,text\n',
     'data/etc/item.csv': 'text,trans,type\nキーホルダー,钥匙链,text\n',
     'data/skill.csv': 'text,trans,type\nVocal,Vo,noun\n$noun$percentUP,$1提升$2,\n',
@@ -189,6 +189,13 @@ describe('P3 feature hooks end-to-end with mock game modules', () => {
     inst._text = '昇格ライン';
     inst.updateText();
     expect(renderedStatic[0]).toBe('升格分数线');
+
+    inst._text = '灯織';
+    inst.updateText();
+    expect(renderedStatic[1]).toBe('灯织');
+
+    inst.typeText('まだ翻訳されていない台詞です');
+    expect(editor.getUntranslatedVoiceCount()).toBe(1);
   });
 
   it('installs resource hook and rewrites matched UI image & picture URLs', async () => {

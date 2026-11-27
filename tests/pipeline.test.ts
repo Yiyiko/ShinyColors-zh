@@ -112,7 +112,8 @@ describe('P4 translation data pipeline', () => {
     write('data/upstream/phrase.csv', 'id,text,trans\nhome.title,ホーム,主页\n');
     write('data/local/phrase.csv', 'id,text,trans\nhome.title,ホーム,本地不应覆盖上游\nextra.key,テスト,测试\n');
     write('data/upstream/type-text/mano.csv', 'text,trans\n頑張ろう,加油\n');
-    write('data/upstream/type-text.csv', 'text,trans\nよろしく,请多关照\n');
+    write('data/upstream/type-text.csv', 'text,trans\nよろしく,请多关照\n未翻訳の台詞,\n');
+    write('data/local/type-text.csv', 'text,trans\nよろしく,本地不应覆盖上游\n未翻訳の台詞,本地补齐译文\n');
     write('data/upstream/etc/image.csv', 'name,url,version\nimages/ui/my_page/parts.json_image,my_page_parts.png,48\nimages/ui/album/parts.json_image,album_parts.png,19\n');
     write('data/local/etc/image.csv', 'name,url,version\nimages/ui/my_page/parts.json_image,my_page_parts.png,50\n');
     write('data/upstream/image/my_page_parts.png', 'OLD_IMG');
@@ -142,10 +143,12 @@ describe('P4 translation data pipeline', () => {
     expect(phraseCsv).toContain('home.title,ホーム,主页');
     expect(phraseCsv).toContain('extra.key,テスト,测试');
 
-    // Type-text merged sub-files + root file
+    // Type-text merged sub-files + root file, and local filled empty upstream trans
     const typeTextCsv = fs.readFileSync(path.join(root, 'dist/data/type-text.csv'), 'utf8');
     expect(typeTextCsv).toContain('頑張ろう,加油');
     expect(typeTextCsv).toContain('よろしく,请多关照');
+    expect(typeTextCsv).toContain('未翻訳の台詞,本地补齐译文');
+    expect(typeTextCsv).not.toContain('本地不应覆盖上游');
 
     // Local newer-version UI atlas & image.csv override upstream while preserving other upstream rows
     const imageCsv = fs.readFileSync(path.join(root, 'dist/data/etc/image.csv'), 'utf8');

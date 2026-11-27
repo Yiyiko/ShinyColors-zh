@@ -20,18 +20,37 @@ export async function installTextHook(ctx: HookContext): Promise<HookInstallResu
   }
 
   try {
-    const [commonMap, typeTextMap] = await Promise.all([
+    const [commonMap, typeTextMap, idolNameMap] = await Promise.all([
       ctx.repo.getCommonTextMap(),
       ctx.repo.getTypeTextMap(),
+      ctx.repo.getIdolNameMap(),
     ]);
-    const matcher = new PixiTextMatcher({ commonMap, typeTextMap });
+    const mergedCommon = new Map<string, string>(commonMap);
+    for (const [k, v] of idolNameMap) {
+      if (!mergedCommon.has(k)) mergedCommon.set(k, v);
+      const compactK = k.replace(/\s+/g, '');
+      const compactV = v.replace(/\s+/g, '');
+      if (compactK && !mergedCommon.has(compactK)) mergedCommon.set(compactK, compactV);
+      const partsK = k.split(/\s+/);
+      const partsV = v.split(/\s+/);
+      if (partsK.length === 2 && partsV.length === 2 && partsK[1] && !mergedCommon.has(partsK[1])) {
+        mergedCommon.set(partsK[1], partsV[1]);
+      }
+    }
+    const matcher = new PixiTextMatcher({ commonMap: mergedCommon, typeTextMap });
     let wrappedCount = 0;
 
     if (typeof proto.typeText === 'function') {
       const origTypeText = proto.typeText;
       proto.typeText = function (text: unknown, ...rest: unknown[]) {
-        const nextText = typeof text === 'string' ? matcher.translateTypeText(text) : text;
-        return origTypeText.call(this, nextText, ...rest);
+        if (typeof text === 'string') {
+          const nextText = matcher.translateTypeText(text);
+          if (nextText === text && /[\u3040-\u30ff]/.test(text) && text.trim().length >= 4) {
+            ctx.editor?.recordUntranslatedVoice(text);
+          }
+          return origTypeText.call(this, nextText, ...rest);
+        }
+        return origTypeText.call(this, text, ...rest);
       };
       wrappedCount += 1;
     }
