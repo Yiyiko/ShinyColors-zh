@@ -1,0 +1,30 @@
+{
+  "name": "shinycolors-zh",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "偶像大师闪耀色彩（ShinyColors）网页版汉化脚本与翻译数据发布流水线",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/3433372905faz-ship-it/ShinyColors-zh.git"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "papaparse": "^5.5.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/papaparse": "^5.3.16",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3",
+    "vite": "^8.4.0",
+    "vite-plugin-monkey": "^8.1.1",
+    "vitest": "^5.1.2"
+  }
+}

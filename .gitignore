@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.vite/
+*.log
+.env
+.env.*
+!.env.example
+
+# Local handoff / temporary files (do not commit to public repo)
+HANDOFF_PROMPT.md
+fixtures/*.local.json
+docs/recon/*.local.json
