@@ -97,19 +97,26 @@ async function bootstrap(): Promise<void> {
     editor,
   });
 
-  const [ezgRes, reqRes, loadedManifest] = await Promise.all([
-    ezgHandle.promise,
+  // Do NOT block on ezgHandle.promise (which can wait 30s if window.ezg was cleared before defineProperty).
+  // Once webpack require is captured (~1s), AOBA can be retrieved immediately from module 77528.
+  const [reqRes, loadedManifest] = await Promise.all([
     reqHandle.promise,
     manifestPromise,
   ]);
 
-  diag.setEzgBoot(ezgRes);
+  const capturedEzg = ezgHandle.getCurrent();
+  ezgHandle.cleanup();
   diag.setRequireBoot(reqRes);
 
   const modules = locateAllModules(reqRes.require, {
     appBundle: reqRes.appBundle,
-    ezgFallback: ezgRes.ezg,
+    ezgFallback: capturedEzg,
     extraHints: loadedManifest?.manifest.moduleHints,
+  });
+  diag.setEzgBoot({
+    ezg: (capturedEzg ?? (modules.AOBA?.value as Record<string, unknown> | null)) ?? null,
+    method: capturedEzg ? 'defineProperty' : modules.AOBA?.value ? 'existing' : 'timeout',
+    elapsedMs: reqRes.elapsedMs,
   });
   diag.setModules(modules);
 

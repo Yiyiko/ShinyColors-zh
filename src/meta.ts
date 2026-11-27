@@ -1,5 +1,5 @@
 export const APP_NAME = 'ShinyColors-zh';
-export const APP_VERSION = '0.2.0';
+export const APP_VERSION = '0.2.1';
 export const REPO_OWNER = 'Yiyiko';
 export const REPO_NAME = 'ShinyColors-zh';
 export const DATA_SOURCES = [

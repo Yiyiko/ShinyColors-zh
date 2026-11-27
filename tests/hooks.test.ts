@@ -233,6 +233,47 @@ describe('P3 feature hooks end-to-end with mock game modules', () => {
     expect(loadedUrls[1]).toBe('https://mock.local/data/picture/card/1.jpg?v=h_pic1');
   });
 
+  it('installs resource hook cleanly even when Resource.prototype is Object.freeze()-ed', async () => {
+    const repo = createMockRepo();
+    const diag = new DiagnosticsStore();
+    const editor = new StoryEditorStore();
+    const loadedUrls: string[] = [];
+
+    class FrozenResource {
+      name = '';
+      url = '';
+      crossOrigin: string | boolean = false;
+      _loadElement(_type: string) {
+        loadedUrls.push(this.url);
+      }
+    }
+    Object.freeze(FrozenResource.prototype);
+
+    class FakeLoader {
+      _loadResource(resource: FrozenResource, _dequeue?: unknown) {
+        resource._loadElement('image');
+      }
+    }
+
+    const res = await installResourceHook({
+      modules: makeModules({
+        AOBA: { loaders: { Resource: FrozenResource, Loader: FakeLoader } },
+      }),
+      repo,
+      diag,
+      editor,
+    });
+    expect(res.status).toBe('ok');
+    expect(res.detail).toContain('mode=loader-instance');
+
+    const r = new FrozenResource();
+    r.name = 'images/card/1.jpg';
+    r.url = '/assets/xyz';
+    new FakeLoader()._loadResource(r);
+    expect(loadedUrls[0]).toBe('https://mock.local/data/picture/card/1.jpg?v=h_pic1');
+    expect(r.crossOrigin).toBe('anonymous');
+  });
+
   it('installs api hook on queue push and translates mission/item/skill/title responses', async () => {
     const repo = createMockRepo();
     const diag = new DiagnosticsStore();
