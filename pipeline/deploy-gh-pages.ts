@@ -46,7 +46,7 @@ export function deployDistToGhPages(options: {
     runGit(['config', 'user.name', userName]);
     runGit(['config', 'user.email', userEmail]);
     runGit(['add', '-A']);
-    runGit(['commit', '-m', `deploy: publish ShinyColors-zh (${new Date().toISOString()})`]);
+    runGit(['commit', '-q', '-m', `deploy: publish ShinyColors-zh (${new Date().toISOString()})`]);
     runGit(['remote', 'add', 'origin', remoteUrl]);
     runGit(['push', '--force', 'origin', branch]);
 

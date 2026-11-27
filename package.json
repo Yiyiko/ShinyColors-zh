@@ -8,7 +8,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/3433372905faz-ship-it/ShinyColors-zh.git"
+    "url": "https://github.com/Yiyiko/ShinyColors-zh.git"
   },
   "scripts": {
     "dev": "vite",

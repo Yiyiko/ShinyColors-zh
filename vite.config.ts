@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import monkey from 'vite-plugin-monkey';
 import pkg from './package.json' with { type: 'json' };
 
-const REPO_OWNER = '3433372905faz-ship-it';
+const REPO_OWNER = 'Yiyiko';
 const REPO_NAME = 'ShinyColors-zh';
 const PAGES_BASE = `https://${REPO_OWNER}.github.io/${REPO_NAME}`;
 const REPO_URL = `https://github.com/${REPO_OWNER}/${REPO_NAME}`;
@@ -23,7 +23,7 @@ export default defineConfig({
         'run-at': 'document-start',
         'inject-into': 'page',
         grant: ['GM_registerMenuCommand', 'GM_xmlhttpRequest'],
-        connect: [`${REPO_OWNER}.github.io`, 'cdn.jsdelivr.net'],
+        connect: [`${REPO_OWNER}.github.io`, 'cdn.jsdelivr.net', '127.0.0.1', 'localhost'],
         updateURL: `${PAGES_BASE}/ShinyColors-zh.user.js`,
         downloadURL: `${PAGES_BASE}/ShinyColors-zh.user.js`,
         supportURL: `${REPO_URL}/issues`,

@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import monkey from 'vite-plugin-monkey';
 import pkg from './package.json' with { type: 'json' };
 
-const REPO_OWNER = '3433372905faz-ship-it';
+const REPO_OWNER = 'Yiyiko';
 const REPO_NAME = 'ShinyColors-zh';
 const REPO_URL = `https://github.com/${REPO_OWNER}/${REPO_NAME}`;
 
