@@ -180,13 +180,31 @@ export function buildDataDist(options: BuildDistOptions): {
     writeTextUtf8(path.join(distDataDir, 'type-text.csv'), mergedTypeText);
   }
 
-  // 4. Copy & overlay etc/*.csv (ai -> local -> upstream so highest priority overwrites)
+  // 4. Copy & overlay etc/*.csv, picture/, font/ (upstream highest for text tables)
+  // For UI image atlases & etc/image.csv, local overrides upstream so freshly redrawn
+  // newer-version UI atlases supersede outdated upstream atlases.
   const overlayOrder = [aiDir, localDir, upstreamDir];
   for (const dir of overlayOrder) {
     copyTree(path.join(dir, 'etc'), path.join(distDataDir, 'etc'));
-    copyTree(path.join(dir, 'image'), path.join(distDataDir, 'image'));
     copyTree(path.join(dir, 'picture'), path.join(distDataDir, 'picture'));
     copyTree(path.join(dir, 'font'), path.join(distDataDir, 'font'));
+  }
+
+  for (const dir of [aiDir, upstreamDir, localDir]) {
+    copyTree(path.join(dir, 'image'), path.join(distDataDir, 'image'));
+  }
+
+  // Merge etc/image.csv by `name` with local taking precedence over upstream
+  const imageCsvSources: string[] = [];
+  for (const dir of [localDir, upstreamDir, aiDir]) {
+    const f = path.join(dir, 'etc', 'image.csv');
+    if (fs.existsSync(f)) imageCsvSources.push(readTextUtf8(f));
+  }
+  if (imageCsvSources.length > 0) {
+    const mergedImageCsv = mergeCsvRowsByPriority(imageCsvSources, 'name', 'version');
+    if (mergedImageCsv) {
+      writeTextUtf8(path.join(distDataDir, 'etc', 'image.csv'), mergedImageCsv);
+    }
   }
 
   // 5. Build picture.json index

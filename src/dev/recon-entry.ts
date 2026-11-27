@@ -3,6 +3,7 @@ import { locateAllModules, type LocateResult, type ModuleName } from '../locator
 import { APP_VERSION } from '../meta';
 
 const REPORT_ENDPOINT = 'http://127.0.0.1:8787/report';
+const ATLAS_ENDPOINT = 'http://127.0.0.1:8787/ui-atlas';
 
 interface ReconState {
   version: string;
@@ -54,6 +55,7 @@ const state: ReconState = {
 const sentStories = new Set<string>();
 const sentApis = new Set<string>();
 const seenImages = new Set<string>();
+const sentAtlases = new Set<string>();
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let badgeEl: HTMLDivElement | null = null;
 
@@ -72,23 +74,27 @@ function describeKeys(obj: unknown): Record<string, string> {
   return out;
 }
 
-function postReport(payload: unknown): void {
+function postJson(endpoint: string, payload: unknown): void {
   const body = JSON.stringify(payload);
   if (typeof GM_xmlhttpRequest === 'function') {
     GM_xmlhttpRequest({
       method: 'POST',
-      url: REPORT_ENDPOINT,
+      url: endpoint,
       headers: { 'Content-Type': 'application/json' },
       data: body,
-      timeout: 5000,
+      timeout: 15000,
     });
     return;
   }
-  void fetch(REPORT_ENDPOINT, {
+  void fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body,
   }).catch(() => {});
+}
+
+function postReport(payload: unknown): void {
+  postJson(REPORT_ENDPOINT, payload);
 }
 
 function scheduleSummaryReport(): void {
@@ -104,7 +110,7 @@ function updateBadge(): void {
   const modOk = Object.values(state.modules).filter((m) => m.id !== null).length;
   const modTotal = Object.keys(state.modules).length;
   const apiCount = Object.keys(state.apiCalls).length;
-  badgeEl.textContent = `RECON mods:${modOk}/${modTotal} story:${sentStories.size} api:${apiCount} img:${state.resourceImages.length}`;
+  badgeEl.textContent = `RECON mods:${modOk}/${modTotal} atlas:${sentAtlases.size} story:${sentStories.size} api:${apiCount}`;
 }
 
 function mountBadge(): void {
@@ -284,20 +290,99 @@ function probeEzg(ezg: Record<string, unknown>): void {
     }
   }
 
-  const loaders = ezg.loaders as { Resource?: { prototype?: Record<string, unknown> } } | undefined;
-  const resProto = loaders?.Resource?.prototype;
-  if (resProto && typeof resProto._loadElement === 'function') {
-    const origLoadEl = resProto._loadElement as (this: { name?: string; url?: string }, type: string) => unknown;
-    resProto._loadElement = function (this: { name?: string; url?: string }, type: string) {
-      if (type === 'image' && state.resourceImages.length < 40) {
-        const key = `${this.name ?? ''}|${this.url ?? ''}`;
-        if (!seenImages.has(key)) {
-          seenImages.add(key);
-          state.resourceImages.push({ name: String(this.name ?? ''), url: String(this.url ?? '') });
-          scheduleSummaryReport();
+  const loaders = ezg.loaders as {
+    Resource?: { prototype?: Record<string, unknown> };
+    Loader?: { prototype?: { _loadResource?: (res: any, dequeue: unknown) => unknown } };
+  } | undefined;
+
+  const extractVersion = (u: string): string => {
+    const m = u.match(/[?&]v=([^&]+)/);
+    return m ? m[1] : '';
+  };
+
+  const captureUiResource = (res: any): void => {
+    const name = String(res?.name ?? '');
+    const url = String(res?.url ?? '');
+    if (!name.startsWith('images/ui/')) return;
+    const isAtlasJson = name.endsWith('.json') && res?.data && typeof res.data === 'object' && res.data.frames;
+    const isAtlasImg =
+      name.endsWith('.json_image') &&
+      res?.data &&
+      typeof HTMLImageElement !== 'undefined' &&
+      res.data instanceof HTMLImageElement;
+
+    if (!isAtlasJson && !isAtlasImg) return;
+    const key = `${name}@${extractVersion(url)}`;
+    if (sentAtlases.has(key)) return;
+    sentAtlases.add(key);
+
+    if (isAtlasJson) {
+      postJson(ATLAS_ENDPOINT, {
+        kind: 'json',
+        name,
+        url,
+        version: extractVersion(url),
+        data: res.data,
+      });
+      updateBadge();
+    } else if (isAtlasImg) {
+      try {
+        const img = res.data as HTMLImageElement;
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        const ctx2d = canvas.getContext('2d');
+        if (ctx2d && canvas.width > 0 && canvas.height > 0) {
+          ctx2d.drawImage(img, 0, 0);
+          const pngDataUrl = canvas.toDataURL('image/png');
+          postJson(ATLAS_ENDPOINT, {
+            kind: 'image',
+            name,
+            url,
+            version: extractVersion(url),
+            pngDataUrl,
+          });
+          updateBadge();
         }
+      } catch (err) {
+        state.errors.push(`atlas-canvas(${name}): ${String(err)}`);
       }
-      return origLoadEl.call(this, type);
+    }
+  };
+
+  // Scan already-loaded resources on singleton ezg.loader if present
+  const existingResources = (ezg.loader as { resources?: Record<string, any> } | undefined)?.resources;
+  if (existingResources) {
+    for (const r of Object.values(existingResources)) {
+      captureUiResource(r);
+    }
+  }
+
+  // Hook Loader.prototype._loadResource (safe even when Resource.prototype is Object.freeze()'d)
+  const loaderProto = loaders?.Loader?.prototype;
+  if (loaderProto && typeof loaderProto._loadResource === 'function') {
+    const origLoadRes = loaderProto._loadResource;
+    loaderProto._loadResource = function (resource: any, dequeue: unknown) {
+      try {
+        if (resource && typeof resource === 'object' && !resource.__sczhReconAttached) {
+          resource.__sczhReconAttached = true;
+          const name = String(resource.name ?? '');
+          const url = String(resource.url ?? '');
+          if (name.startsWith('images/') && state.resourceImages.length < 40) {
+            const k = `${name}|${url}`;
+            if (!seenImages.has(k)) {
+              seenImages.add(k);
+              state.resourceImages.push({ name, url });
+            }
+          }
+          if (name.startsWith('images/ui/') && resource.onComplete?.add) {
+            resource.onComplete.add(() => captureUiResource(resource));
+          }
+        }
+      } catch (e) {
+        state.errors.push(`loader-probe: ${String(e)}`);
+      }
+      return origLoadRes.call(this, resource, dequeue);
     };
   }
 }
@@ -317,8 +402,11 @@ async function main(): Promise<void> {
     });
   }
 
-  const [ezgRes, reqRes] = await Promise.all([ezgHandle.promise, reqHandle.promise]);
-  state.boot.ezg = { captured: Boolean(ezgRes.ezg), method: ezgRes.method, elapsedMs: ezgRes.elapsedMs };
+  // Do not wait 30s on ezgHandle once require is captured
+  const reqRes = await reqHandle.promise;
+  const capturedEzg = ezgHandle.getCurrent();
+  ezgHandle.cleanup();
+
   state.boot.require = {
     captured: Boolean(reqRes.require),
     method: reqRes.method,
@@ -327,14 +415,20 @@ async function main(): Promise<void> {
     elapsedMs: reqRes.elapsedMs,
   };
 
-  if (ezgRes.ezg) {
-    probeEzg(ezgRes.ezg);
-  }
-
   const located = locateAllModules(reqRes.require, {
     appBundle: reqRes.appBundle,
-    ezgFallback: ezgRes.ezg,
+    ezgFallback: capturedEzg,
   });
+  const ezgObj = (capturedEzg ?? located.AOBA.value) as Record<string, unknown> | null;
+  state.boot.ezg = {
+    captured: Boolean(ezgObj),
+    method: capturedEzg ? 'defineProperty' : ezgObj ? 'existing' : 'timeout',
+    elapsedMs: reqRes.elapsedMs,
+  };
+
+  if (ezgObj) {
+    probeEzg(ezgObj);
+  }
 
   for (const [name, res] of Object.entries(located) as Array<[ModuleName, LocateResult]>) {
     state.modules[name] = {
@@ -349,9 +443,6 @@ async function main(): Promise<void> {
   }
   if (located.PHRASE.value && typeof located.PHRASE.value === 'object') {
     probePhrase(located.PHRASE.value as Record<string, unknown>);
-  }
-  if (!ezgRes.ezg && located.AOBA.value && typeof located.AOBA.value === 'object') {
-    probeEzg(located.AOBA.value as Record<string, unknown>);
   }
 
   scheduleSummaryReport();

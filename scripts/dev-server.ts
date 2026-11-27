@@ -60,6 +60,7 @@ export function createReconServer(options: ReconServerOptions): http.Server {
   const reconDir = path.join(rootDir, 'docs', 'recon');
   const storyFixtureDir = path.join(rootDir, 'fixtures', 'story');
   const apiFixtureDir = path.join(rootDir, 'fixtures', 'api');
+  const localAtlasDir = path.join(rootDir, '.local-atlas');
   const reconScriptPath = path.join(rootDir, 'dist', 'ShinyColors-zh-recon.user.js');
 
   const stats = {
@@ -67,6 +68,7 @@ export function createReconServer(options: ReconServerOptions): http.Server {
     reportsReceived: 0,
     storiesSaved: new Set<string>(),
     apisSaved: new Set<string>(),
+    atlasesSaved: new Set<string>(),
     lastReportAt: null as string | null,
   };
 
@@ -80,7 +82,7 @@ export function createReconServer(options: ReconServerOptions): http.Server {
     new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
       let total = 0;
-      const limit = 10 * 1024 * 1024; // 10 MB
+      const limit = 40 * 1024 * 1024; // 40 MB (for PNG data URLs of UI atlases)
       req.on('data', (chunk: Buffer) => {
         total += chunk.length;
         if (total > limit) {
@@ -115,6 +117,7 @@ export function createReconServer(options: ReconServerOptions): http.Server {
             reportsReceived: stats.reportsReceived,
             storiesSaved: Array.from(stats.storiesSaved),
             apisSaved: Array.from(stats.apisSaved),
+            atlasesSaved: Array.from(stats.atlasesSaved),
             lastReportAt: stats.lastReportAt,
           },
           null,
@@ -168,6 +171,60 @@ export function createReconServer(options: ReconServerOptions): http.Server {
         fs.createReadStream(candidate).pipe(res);
         return;
       }
+    }
+
+    if (req.method === 'POST' && url.pathname === '/ui-atlas') {
+      try {
+        const raw = await readBody(req);
+        const body = JSON.parse(raw) as {
+          name?: string;
+          url?: string;
+          version?: string;
+          kind?: 'json' | 'image';
+          data?: unknown;
+          pngDataUrl?: string;
+        };
+        if (!body.name || !body.name.startsWith('images/ui/')) {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: false, error: 'Only images/ui/* atlases are accepted' }));
+          return;
+        }
+        fs.mkdirSync(localAtlasDir, { recursive: true });
+        const slug = safeFileSlug(body.name);
+        let savedPath = '';
+
+        if (body.kind === 'json' && body.data) {
+          savedPath = path.join(localAtlasDir, `${slug}.atlas.json`);
+          fs.writeFileSync(
+            savedPath,
+            JSON.stringify({ name: body.name, url: body.url, version: body.version, data: body.data }, null, 2) + '\n',
+            'utf8',
+          );
+        } else if (body.kind === 'image' && typeof body.pngDataUrl === 'string') {
+          const b64 = body.pngDataUrl.replace(/^data:image\/png;base64,/, '');
+          savedPath = path.join(localAtlasDir, `${slug}.png`);
+          fs.writeFileSync(savedPath, Buffer.from(b64, 'base64'));
+          const metaPath = path.join(localAtlasDir, `${slug}.meta.json`);
+          fs.writeFileSync(
+            metaPath,
+            JSON.stringify({ name: body.name, url: body.url, version: body.version }, null, 2) + '\n',
+            'utf8',
+          );
+        } else {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: false, error: 'Invalid atlas payload' }));
+          return;
+        }
+
+        stats.atlasesSaved.add(`${body.name} (v=${body.version ?? '?'})`);
+        console.info(`[Recon Server] Saved UI atlas: ${body.name} (v=${body.version ?? '?'}) -> ${path.basename(savedPath)}`);
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, savedPath }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+      }
+      return;
     }
 
     if (req.method === 'POST' && url.pathname === '/report') {

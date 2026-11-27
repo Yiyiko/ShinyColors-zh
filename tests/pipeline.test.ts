@@ -113,6 +113,10 @@ describe('P4 translation data pipeline', () => {
     write('data/local/phrase.csv', 'id,text,trans\nhome.title,ホーム,本地不应覆盖上游\nextra.key,テスト,测试\n');
     write('data/upstream/type-text/mano.csv', 'text,trans\n頑張ろう,加油\n');
     write('data/upstream/type-text.csv', 'text,trans\nよろしく,请多关照\n');
+    write('data/upstream/etc/image.csv', 'name,url,version\nimages/ui/my_page/parts.json_image,my_page_parts.png,48\nimages/ui/album/parts.json_image,album_parts.png,19\n');
+    write('data/local/etc/image.csv', 'name,url,version\nimages/ui/my_page/parts.json_image,my_page_parts.png,50\n');
+    write('data/upstream/image/my_page_parts.png', 'OLD_IMG');
+    write('data/local/image/my_page_parts.png', 'NEW_V50_IMG');
 
     const { manifest, report } = buildDataDist({ rootDir: root });
 
@@ -142,5 +146,11 @@ describe('P4 translation data pipeline', () => {
     const typeTextCsv = fs.readFileSync(path.join(root, 'dist/data/type-text.csv'), 'utf8');
     expect(typeTextCsv).toContain('頑張ろう,加油');
     expect(typeTextCsv).toContain('よろしく,请多关照');
+
+    // Local newer-version UI atlas & image.csv override upstream while preserving other upstream rows
+    const imageCsv = fs.readFileSync(path.join(root, 'dist/data/etc/image.csv'), 'utf8');
+    expect(imageCsv).toContain('images/ui/my_page/parts.json_image,my_page_parts.png,50');
+    expect(imageCsv).toContain('images/ui/album/parts.json_image,album_parts.png,19');
+    expect(fs.readFileSync(path.join(root, 'dist/data/image/my_page_parts.png'), 'utf8')).toBe('NEW_V50_IMG');
   });
 });
