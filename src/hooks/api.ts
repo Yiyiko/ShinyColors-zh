@@ -313,6 +313,259 @@ export function registerDefaultApiRoutes(router: ApiRouter, repo: DataRepository
 
   router.register('GET', ['characterAlbums', 'album/top'], handleTitles);
   router.register('POST', ['characterAlbums/characters/{num}', 'produceMarathons/{num}/top'], handleTitles);
+
+  // 5. Support Skills (support-skill.csv + idol-filter.csv)
+  const translateSupportSkillList = (
+    list: unknown,
+    supportMatcher: TemplateTextMatcher,
+    filterMatcher: TemplateTextMatcher,
+  ) => {
+    if (!Array.isArray(list)) return;
+    for (const item of list) {
+      if (!item || typeof item !== 'object') continue;
+      const rec = item as Record<string, unknown>;
+      supportMatcher.translateField(rec, 'description');
+      if (typeof rec.name === 'string') {
+        const name = rec.name;
+        if (name.includes('マスタリー') && !name.endsWith('マスタリー')) {
+          const idx = name.lastIndexOf('マスタリー') + 'マスタリー'.length;
+          const prefix = name.slice(0, idx);
+          const suffix = name.slice(idx);
+          rec.name = filterMatcher.translate(prefix) + suffix;
+        } else {
+          filterMatcher.translateField(rec, 'name');
+        }
+      }
+    }
+  };
+
+  const handleSupportSkills: ApiHandler = async (data) => {
+    const [supportMatcher, filterMatcher] = await Promise.all([
+      repo.getTemplateMatcher('data/etc/support-skill.csv'),
+      repo.getTemplateMatcher('data/etc/idol-filter.csv'),
+    ]);
+    const target = (data.userSupportIdol ?? data) as Record<string, unknown>;
+    translateSupportSkillList(target.acquiredSupportSkills, supportMatcher, filterMatcher);
+    translateSupportSkillList(target.supportSkills, supportMatcher, filterMatcher);
+    const inner = target.supportIdol as Record<string, unknown> | undefined;
+    translateSupportSkillList(inner?.supportSkills, supportMatcher, filterMatcher);
+
+    if (Array.isArray(data.userSupportIdols)) {
+      for (const s of data.userSupportIdols) {
+        const si = (s as { supportIdol?: { supportSkills?: unknown } })?.supportIdol;
+        translateSupportSkillList(si?.supportSkills, supportMatcher, filterMatcher);
+      }
+    }
+    if (Array.isArray(data.userDecks)) {
+      for (const deck of data.userDecks) {
+        const members = (deck as { userSupportIdols?: unknown })?.userSupportIdols;
+        if (!Array.isArray(members)) continue;
+        for (const s of members) {
+          const si = (s as { supportIdol?: { supportSkills?: unknown } })?.supportIdol;
+          translateSupportSkillList(si?.supportSkills, supportMatcher, filterMatcher);
+        }
+      }
+    }
+  };
+
+  router.register(
+    'GET',
+    [
+      'userSupportIdols/{num}',
+      'userSupportIdols/statusMax',
+      'produceTeachingSupportIdols/{num}',
+      'userProduce(Teaching)?SupportIdols/{num}',
+      'userReserveSupportIdols/userSupportIdol/{num}',
+      'produces/{num}/decks',
+    ],
+    handleSupportSkills,
+  );
+  router.register(
+    'POST',
+    [
+      'produces/{num}/actions/ready',
+      'userSupportIdols/{num}/produceExSkills/{num}/actions/set',
+      'produces/actions/(resume|next)',
+    ],
+    handleSupportSkills,
+  );
+  router.register('PATCH', ['userSupportIdols/{num}', 'produces/{num}/produceItem/consume'], handleSupportSkills);
+
+  // 6. EX Skills (etc/ex-skill.csv)
+  const handleExSkills: ApiHandler = async (data) => {
+    const exMatcher = await repo.getTemplateMatcher('data/etc/ex-skill.csv');
+    const translateExList = (list: unknown) => {
+      if (!Array.isArray(list)) return;
+      for (const entry of list) {
+        if (!entry || typeof entry !== 'object') continue;
+        const rec = entry as Record<string, unknown>;
+        const target = (rec.produceExSkill ?? rec) as Record<string, unknown>;
+        exMatcher.translateField(target, 'name');
+        exMatcher.translateField(target, 'description');
+        const upg = (rec.produceExSkillUpgrade as { produceExSkill?: Record<string, unknown> } | undefined)
+          ?.produceExSkill;
+        if (upg) {
+          exMatcher.translateField(upg, 'name');
+          exMatcher.translateField(upg, 'description');
+        }
+      }
+    };
+
+    translateExList(data.userIdolProduceExSkills);
+    translateExList(data.userProduceIdolProduceExSkills);
+    translateExList(data.userSupportIdolProduceExSkills);
+    translateExList(data.userProduceSupportIdolProduceExSkills);
+    translateExList(data.produceExSkillRewards);
+    translateExList(data.userProduceExSkills);
+    if (Array.isArray(data)) translateExList(data);
+
+    const fesIdol = data.userFesIdol as Record<string, unknown> | undefined;
+    if (fesIdol) {
+      translateExList(fesIdol.userFesIdolProduceExSkills);
+      if (Array.isArray(fesIdol.userFesSupportIdols)) {
+        for (const spt of fesIdol.userFesSupportIdols) {
+          translateExList((spt as Record<string, unknown>)?.userFesSupportIdolProduceExSkills);
+        }
+      }
+    }
+    if (data.produceExSkill && typeof data.produceExSkill === 'object') {
+      exMatcher.translateField(data.produceExSkill as Record<string, unknown>, 'name');
+      exMatcher.translateField(data.produceExSkill as Record<string, unknown>, 'description');
+    }
+  };
+
+  router.register(
+    'GET',
+    [
+      'userIdols/produceExSkillTop',
+      'userSupportIdols/produceExSkillTop',
+      'userIdols/{num}/produceExSkillTop',
+      'userSupportIdols/{num}/produceExSkillTop',
+      'userIdols/{num}',
+      'userSupportIdols/{num}',
+      'userProduce(Teaching)?Idols/{num}',
+      'userProduce(Teaching)?SupportIdols/{num}',
+      'userFesIdols/{num}',
+      'userProducerSkills/summaries',
+    ],
+    handleExSkills,
+  );
+  router.register(
+    'POST',
+    [
+      'userIdols/{num}/produceExSkills/{num}/actions/set',
+      'userSupportIdols/{num}/produceExSkills/{num}/actions/set',
+      'produces/actions/result',
+      'userProduceExSkills/actions/upgrade',
+    ],
+    handleExSkills,
+  );
+
+  // 7. Idol Filter & Produce Titles
+  const handleFilterOptions: ApiHandler = async (data) => {
+    const filterMatcher = await repo.getTemplateMatcher('data/etc/idol-filter.csv');
+    for (const key of ['businesses', 'units'] as const) {
+      if (Array.isArray(data[key])) {
+        (data[key] as Record<string, unknown>[]).forEach((item) =>
+          filterMatcher.translateField(item, 'name'),
+        );
+      }
+    }
+    if (Array.isArray(data.produces)) {
+      (data.produces as Record<string, unknown>[]).forEach((item) =>
+        filterMatcher.translateField(item, 'title'),
+      );
+    }
+    if (Array.isArray(data.characters)) {
+      for (const ch of data.characters as Record<string, unknown>[]) {
+        filterMatcher.translateField(ch, 'name');
+        filterMatcher.translateField(ch, 'firstName');
+        if (ch.unit && typeof ch.unit === 'object') {
+          filterMatcher.translateField(ch.unit as Record<string, unknown>, 'name');
+        }
+      }
+    }
+    for (const key of [
+      'activeSkills',
+      'ideas',
+      'idolArrivalTypes',
+      'knowHowBooks',
+      'supportSkillAttributes',
+      'supportSkillEffects',
+    ] as const) {
+      if (Array.isArray(data[key])) {
+        (data[key] as Record<string, unknown>[]).forEach((item) =>
+          filterMatcher.translateField(item, 'label'),
+        );
+      }
+    }
+  };
+  router.register('GET', ['searchPopupContents'], handleFilterOptions);
+
+  const handleProduceTitles: ApiHandler = async (data) => {
+    const titleMatcher = await repo.getTemplateMatcher('data/title.csv');
+    if (Array.isArray(data.produceEvents)) {
+      for (const ev of data.produceEvents) {
+        if (ev && typeof ev === 'object') {
+          titleMatcher.translateField(ev as Record<string, unknown>, 'title');
+        }
+      }
+    }
+    if (Array.isArray(data.produceHintSettings)) {
+      for (const h of data.produceHintSettings) {
+        if (h && typeof h === 'object') {
+          titleMatcher.translateField(h as Record<string, unknown>, 'title');
+        }
+      }
+    }
+    const up = (data.userProduce as { produce?: Record<string, unknown> } | undefined)?.produce;
+    if (up) titleMatcher.translateField(up, 'title');
+  };
+  router.register('GET', ['userProduceAreas'], handleProduceTitles);
+  router.register(
+    'POST',
+    ['myPage', 'produces/actions/(resume|next|finish|act)', 'produceTeachings/resume'],
+    handleProduceTitles,
+  );
+
+  // 8. Character Profiles (profile.csv + idol-name.csv)
+  const handleCharacterProfile: ApiHandler = async (data) => {
+    const [profileMap, idolNameMap] = await Promise.all([
+      repo.getProfileMap(),
+      repo.getIdolNameMap(),
+    ]);
+    const applyProfile = (charObj: unknown) => {
+      if (!charObj || typeof charObj !== 'object') return;
+      const chara = charObj as Record<string, unknown>;
+      if (typeof chara.name === 'string' && idolNameMap.has(chara.name)) {
+        chara.name = idolNameMap.get(chara.name);
+      }
+      if (typeof chara.firstName === 'string' && idolNameMap.has(chara.firstName)) {
+        chara.firstName = idolNameMap.get(chara.firstName);
+      }
+      const row = profileMap.get(String(chara.id ?? ''));
+      if (!row) return;
+      for (const [k, v] of Object.entries(row)) {
+        if (k === 'id' || !v || !chara[k]) continue;
+        if (k === 'unit' && typeof chara.unit === 'object' && chara.unit !== null) {
+          (chara.unit as Record<string, unknown>).name = v;
+        } else if (typeof chara[k] === 'string') {
+          chara[k] = v;
+        }
+      }
+    };
+
+    if (data.id && (data.starSign || data.hobby || data.characterVoice)) {
+      applyProfile(data);
+    }
+    applyProfile((data.idol as { character?: unknown } | undefined)?.character);
+    applyProfile((data.supportIdol as { character?: unknown } | undefined)?.character);
+    applyProfile(
+      (data.userFesIdol as { idol?: { character?: unknown } } | undefined)?.idol?.character,
+    );
+  };
+  router.register('GET', ['userIdols/{num}', 'userSupportIdols/{num}', 'userFesIdols/{num}'], handleCharacterProfile);
+  router.register('POST', ['characterAlbums/characters/{num}'], handleCharacterProfile);
 }
 
 let apiQueueHookInstalled = false;

@@ -19,6 +19,7 @@
     "pipeline:lint": "tsx pipeline/lint.ts",
     "pipeline:build": "tsx pipeline/build.ts",
     "pipeline:deploy": "tsx pipeline/deploy-gh-pages.ts",
+    "pipeline:ai": "tsx pipeline/translate-ai.ts",
     "pipeline:all": "pnpm run pipeline:sync && pnpm run pipeline:lint && pnpm run build && pnpm run pipeline:build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

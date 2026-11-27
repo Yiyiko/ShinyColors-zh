@@ -186,17 +186,22 @@ export function lintStoryCsvContent(
       }
     }
 
-    // Line-length advisory checks (11 chars for select, 17 chars for speech lines)
+    // Line-length advisory checks (11 full-width chars for select, 17 for speech lines)
+    // Count ASCII characters as 0.5 width so official unit names like "illumination STARS" aren't false positives.
     const maxLen = id === 'select' ? 11 : 17;
     const lines = trans.split('\n');
     for (const l of lines) {
-      if (l.length > maxLen) {
+      let width = 0;
+      for (const ch of l) {
+        width += ch.charCodeAt(0) <= 0x7f ? 0.5 : 1;
+      }
+      if (Math.ceil(width) > maxLen) {
         issues.push({
           file: fileLabel,
           line: lineNo,
           severity: 'warning',
           rule: id === 'select' ? 'select-line-length' : 'text-line-length',
-          message: `Line length ${l.length} exceeds advisory limit ${maxLen}`,
+          message: `Line visual width ${Math.ceil(width)} exceeds advisory limit ${maxLen}`,
         });
         break;
       }

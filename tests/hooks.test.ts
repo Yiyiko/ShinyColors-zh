@@ -31,6 +31,10 @@ function createMockRepo(): DataRepository {
         'data/etc/item.csv': 'h_itm',
         'data/skill.csv': 'h_skl',
         'data/title.csv': 'h_ttl',
+        'data/profile.csv': 'h_prf',
+        'data/etc/support-skill.csv': 'h_ssk',
+        'data/etc/ex-skill.csv': 'h_exk',
+        'data/etc/idol-filter.csv': 'h_flt',
         'data/etc/image.csv': 'h_img',
         'data/image/album_parts.webp': 'h_img1',
         'data/picture/card/1.jpg': 'h_pic1',
@@ -55,6 +59,10 @@ function createMockRepo(): DataRepository {
     'data/etc/item.csv': 'text,trans,type\nキーホルダー,钥匙链,text\n',
     'data/skill.csv': 'text,trans,type\nVocal,Vo,noun\n$noun$percentUP,$1提升$2,\n',
     'data/title.csv': 'text,trans,type\nW.I.N.G.編,W.I.N.G.篇,text\n',
+    'data/profile.csv': 'id,unit,hobby\n1,illumination STARS,散步\n',
+    'data/etc/support-skill.csv': 'text,trans,type\nプロデュース開始時に絆$num,培育开始时羁绊$1,\n',
+    'data/etc/ex-skill.csv': 'text,trans,type\n$noun初期値,$1初始值,\nVocal,Vo,noun\n',
+    'data/etc/idol-filter.csv': 'text,trans,type\nボーカルマスタリー,Vo精通,text\n',
     'data/etc/image.csv': 'name,url,version\nimages/ui/album/parts.json_image,album_parts.png,19\n',
   };
 
@@ -264,5 +272,36 @@ describe('P3 feature hooks end-to-end with mock game modules', () => {
 
     expect(resolvedBody.dailyUserMissions[0].mission.title).toBe('进行1次Fes');
     expect(resolvedBody.dailyUserMissions[0].mission.missionReward.content.name).toBe('钥匙链');
+
+    // Also test support-skill, ex-skill, and character profile on userSupportIdols/{num}
+    let sptBody: any = null;
+    const sptItem = {
+      method: 'get',
+      path: 'userSupportIdols/123',
+      options: {},
+      resolve: (resp: any) => {
+        sptBody = resp.body;
+      },
+    };
+    fakeProto.push.call(queue, sptItem);
+    await queue[1].resolve({
+      body: {
+        supportSkills: [
+          { name: 'ボーカルマスタリーVo', description: 'プロデュース開始時に絆+5' },
+        ],
+        userSupportIdolProduceExSkills: [
+          { produceExSkill: { name: 'Vocal初期値', description: 'Vocal初期値' } },
+        ],
+        supportIdol: {
+          character: { id: '1', name: '櫻木真乃', hobby: '散歩', unit: { name: 'orig' } },
+        },
+      },
+    });
+    expect(sptBody.supportSkills[0].name).toBe('Vo精通Vo');
+    expect(sptBody.supportSkills[0].description).toBe('培育开始时羁绊+5');
+    expect(sptBody.userSupportIdolProduceExSkills[0].produceExSkill.name).toBe('Vo初始值');
+    expect(sptBody.supportIdol.character.name).toBe('樱木真乃');
+    expect(sptBody.supportIdol.character.hobby).toBe('散步');
+    expect(sptBody.supportIdol.character.unit.name).toBe('illumination STARS');
   });
 });

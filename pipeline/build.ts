@@ -13,7 +13,7 @@ const TOP_LEVEL_CSVS: ReadonlyArray<{ file: string; keyCol: string; valCol: stri
   { file: 'common.csv', keyCol: 'text', valCol: 'trans' },
   { file: 'comm-story.csv', keyCol: 'text', valCol: 'trans' },
   { file: 'name.csv', keyCol: 'name', valCol: 'trans' },
-  { file: 'profile.csv', keyCol: 'id', valCol: 'trans' },
+  { file: 'profile.csv', keyCol: 'id', valCol: '' },
   { file: 'skill.csv', keyCol: 'text', valCol: 'trans' },
   { file: 'title.csv', keyCol: 'text', valCol: 'trans' },
 ];

@@ -58,6 +58,7 @@ export class DataRepository {
   private pictureMapPromise: Promise<Map<string, string>> | null = null;
   private imageMapPromise: Promise<Map<string, ImageRule>> | null = null;
   private kvPromises = new Map<string, Promise<Map<string, string>>>();
+  private profileMapPromise: Promise<Map<string, Record<string, string>>> | null = null;
   private templatePromises = new Map<string, Promise<TemplateTextMatcher>>();
   private storyPromises = new Map<string, Promise<ParsedStoryCsv | null>>();
 
@@ -202,6 +203,26 @@ export class DataRepository {
     return this.getKeyValueMap('data/etc/idol-name.csv', 'name', 'trans');
   }
 
+  async getProfileMap(): Promise<Map<string, Record<string, string>>> {
+    if (!this.profileMapPromise) {
+      this.profileMapPromise = (async () => {
+        const text = await this.loadTextByManifest('data/profile.csv');
+        const map = new Map<string, Record<string, string>>();
+        if (!text) return map;
+        const parsed = Papa.parse<Record<string, string>>(stripBom(text), {
+          header: true,
+          skipEmptyLines: true,
+        });
+        for (const row of parsed.data) {
+          const id = trimSpaces(row.id);
+          if (id) map.set(id, row);
+        }
+        return map;
+      })().catch(() => new Map<string, Record<string, string>>());
+    }
+    return this.profileMapPromise;
+  }
+
   async getTemplateMatcher(relPath: string): Promise<TemplateTextMatcher> {
     if (!this.templatePromises.has(relPath)) {
       this.templatePromises.set(
@@ -278,6 +299,7 @@ export class DataRepository {
     this.pictureMapPromise = null;
     this.imageMapPromise = null;
     this.kvPromises.clear();
+    this.profileMapPromise = null;
     this.templatePromises.clear();
     this.storyPromises.clear();
   }
