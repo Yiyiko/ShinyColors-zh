@@ -63,9 +63,10 @@ describe('Runtime machine translation (custom API + free fallback)', () => {
         return { status: 429, text: 'quota exceeded' };
       }
       if (req.url.includes('translate.googleapis.com')) {
+        expect(req.method).toBe('POST');
         return {
           status: 200,
-          text: JSON.stringify([[['【0】制片人，早上好\n【1】283 Pro 加油']]]),
+          text: JSON.stringify([[['[0] 制片人，Toori早上好\n[1] 283 Pro 加油']]]),
         };
       }
       throw new Error(`unexpected url ${req.url}`);
@@ -84,13 +85,13 @@ describe('Runtime machine translation (custom API + free fallback)', () => {
     });
 
     const res = await translator.translateStory('produce_events/fallback.json', [
-      { text: 'プロデューサー、おはよう' },
+      { text: 'プロデューサー、灯織おはよう' },
       { text: '283プロ頑張ろう' },
     ]);
     expect(res?.usedFallback).toBe(true);
     expect(res?.engineLabel).toContain('免费保底');
-    // Post-processing fixes 制片人 -> 制作人 and 283 Pro -> 283事务所
-    expect(res?.texts.get(0)).toBe('制作人，早上好');
+    // Post-processing fixes 制片人 -> 制作人, Toori -> 灯织, 283 Pro -> 283事务所
+    expect(res?.texts.get(0)).toBe('制作人，灯织早上好');
     expect(res?.texts.get(1)).toBe('283事务所 加油');
   });
 

@@ -28,6 +28,14 @@ const FREE_POST_REPLACEMENTS: ReadonlyArray<[RegExp, string]> = [
   [/283\s*Pro/gi, '283事务所'],
   [/樱木真野/g, '樱木真乃'],
   [/风野灯织|风野绯织/g, '风野灯织'],
+  [/\bToori\b|\bHiori\b/gi, '灯织'],
+  [/\bMano\b/gi, '真乃'],
+  [/\bMeguru\b/gi, '巡'],
+  [/\bKogane\b/gi, '恋钟'],
+  [/\bMamimi\b/gi, '摩美美'],
+  [/\bNichika\b/gi, '日花'],
+  [/\bMikoto\b/gi, '美琴'],
+  [/\bRuka\b|\bLuca\b/gi, '路加'],
   [/八宫巡|八宫惠/g, '八宫巡'],
   [/月冈恋钟|月冈小金/g, '月冈恋钟'],
   [/田中真美美|田中麻美/g, '田中摩美美'],
@@ -257,16 +265,27 @@ export async function translateWithFreeGoogle(options: ProviderTranslateOptions)
     ? config.baseUrl
     : 'https://translate.googleapis.com/translate_a/single';
 
-  const translateSingle = async (text: string): Promise<string> => {
-    const q = encodeURIComponent(text);
-    const url = `${endpoint}?client=gtx&sl=ja&tl=zh-CN&dt=t&q=${q}`;
-    const res = await http({ url, method: 'GET', timeoutMs: config.timeoutMs });
+  const requestGoogle = async (queryText: string): Promise<string> => {
+    const url = `${endpoint}?client=gtx&sl=ja&tl=zh-CN&dt=t`;
+    const res = await http({
+      url,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      },
+      body: `q=${encodeURIComponent(queryText)}`,
+      timeoutMs: config.timeoutMs,
+    });
     if (res.status < 200 || res.status >= 300) {
       throw new Error(`免费保底翻译 HTTP ${res.status}`);
     }
     const parsed = JSON.parse(res.text) as unknown[];
     const segments = Array.isArray(parsed[0]) ? (parsed[0] as unknown[][]) : [];
-    const joined = segments.map((seg) => (typeof seg?.[0] === 'string' ? seg[0] : '')).join('');
+    return segments.map((seg) => (typeof seg?.[0] === 'string' ? seg[0] : '')).join('');
+  };
+
+  const translateSingle = async (text: string): Promise<string> => {
+    const joined = await requestGoogle(text);
     return applyShinyTermsFix(joined || text);
   };
 
@@ -274,7 +293,7 @@ export async function translateWithFreeGoogle(options: ProviderTranslateOptions)
     return [await translateSingle(lines[0].text)];
   }
 
-  // Pack lines into <= 1600 char batches separated by unique line-safe markers
+  // Pack lines into <= 1200 char batches separated by resilient [idx] markers
   const out: string[] = new Array(lines.length);
   let cursor = 0;
   while (cursor < lines.length) {
@@ -283,27 +302,19 @@ export async function translateWithFreeGoogle(options: ProviderTranslateOptions)
     let charCount = 0;
     while (cursor < lines.length) {
       const encoded = lines[cursor].text.replace(/\r?\n/g, ' ⏎ ');
-      const piece = `【${cursor}】${encoded}`;
-      if (batchIdx.length > 0 && charCount + piece.length > 1400) break;
+      const piece = `[${cursor}] ${encoded}`;
+      if (batchIdx.length > 0 && charCount + piece.length > 1200) break;
       batchIdx.push(cursor);
       parts.push(piece);
       charCount += piece.length + 1;
       cursor += 1;
     }
 
-    const joinedQuery = parts.join('\n');
-    const url = `${endpoint}?client=gtx&sl=ja&tl=zh-CN&dt=t&q=${encodeURIComponent(joinedQuery)}`;
-    const res = await http({ url, method: 'GET', timeoutMs: config.timeoutMs });
-    if (res.status < 200 || res.status >= 300) {
-      throw new Error(`免费保底翻译 HTTP ${res.status}`);
-    }
-    const parsed = JSON.parse(res.text) as unknown[];
-    const segments = Array.isArray(parsed[0]) ? (parsed[0] as unknown[][]) : [];
-    const mergedText = segments.map((seg) => (typeof seg?.[0] === 'string' ? seg[0] : '')).join('');
+    const mergedText = await requestGoogle(parts.join('\n'));
 
-    // Parse back by 【idx】 marker
+    // Google Translate may output either [0] or 【0】; accept both!
     const matched = new Map<number, string>();
-    const markerRe = /【\s*(\d+)\s*】([\s\S]*?)(?=【\s*\d+\s*】|$)/g;
+    const markerRe = /(?:【|\[)\s*(\d+)\s*(?:】|\])\s*([\s\S]*?)(?=(?:【|\[)\s*\d+\s*(?:】|\])|$)/g;
     let m: RegExpExecArray | null;
     while ((m = markerRe.exec(mergedText)) !== null) {
       const idx = Number(m[1]);

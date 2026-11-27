@@ -207,7 +207,10 @@ export class TranslateSettingsPanel {
     q<HTMLButtonElement>('mt-save').addEventListener('click', () => {
       const next = readForm();
       this.translator.updateConfig(next);
-      setStatus('ok', `已保存：${getMtPreset(next.provider).label}（无需刷新，立即对后续剧情/语音生效）`);
+      setStatus(
+        'ok',
+        `已保存：${getMtPreset(next.provider).label}（请先点「测试连接」验证连通性；如已在剧情中，退出重新进入即可生效）`,
+      );
       showToast('实时机翻设置已保存', { variant: 'info' });
     });
 
