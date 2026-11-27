@@ -7,3 +7,4 @@ export {
   type StoryCoverageEntry,
 } from './diagnostics-panel';
 export { registerUserscriptMenus, type MenuActions } from './menu';
+export { showToast, type ToastVariant } from './toast';

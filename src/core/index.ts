@@ -18,6 +18,11 @@ export {
   type StoryMatchStats,
 } from './story-matcher';
 export {
+  compileTemplateCsv,
+  TemplateTextMatcher,
+  type CompiledTemplateDict,
+} from './template-matcher';
+export {
   PixiTextMatcher,
   STORY_TAG_MARKER,
   type TextMatcherOptions,

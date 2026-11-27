@@ -139,6 +139,37 @@ export function createReconServer(options: ReconServerOptions): http.Server {
       return;
     }
 
+    // Also serve built dist/ static assets for local custom-source testing
+    if (req.method === 'GET') {
+      const distRoot = path.resolve(rootDir, 'dist');
+      const safeRel = decodeURIComponent(url.pathname).replace(/^\/+/, '');
+      const candidate = path.resolve(distRoot, safeRel);
+      if (
+        safeRel &&
+        candidate.startsWith(distRoot + path.sep) &&
+        fs.existsSync(candidate) &&
+        fs.statSync(candidate).isFile()
+      ) {
+        const ext = path.extname(candidate).toLowerCase();
+        const mimeMap: Record<string, string> = {
+          '.json': 'application/json; charset=utf-8',
+          '.csv': 'text/csv; charset=utf-8',
+          '.js': 'text/javascript; charset=utf-8',
+          '.html': 'text/html; charset=utf-8',
+          '.png': 'image/png',
+          '.webp': 'image/webp',
+          '.jpg': 'image/jpeg',
+          '.woff2': 'font/woff2',
+        };
+        res.writeHead(200, {
+          'Content-Type': mimeMap[ext] ?? 'application/octet-stream',
+          'Cache-Control': 'no-store',
+        });
+        fs.createReadStream(candidate).pipe(res);
+        return;
+      }
+    }
+
     if (req.method === 'POST' && url.pathname === '/report') {
       try {
         const raw = await readBody(req);

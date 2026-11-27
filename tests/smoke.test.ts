@@ -8,7 +8,7 @@ describe('P0 project metadata', () => {
     expect(REPO_OWNER).toBe('Yiyiko');
     expect(REPO_NAME).toBe('ShinyColors-zh');
     expect(DATA_SOURCES).toHaveLength(2);
-    expect(DATA_SOURCES[0]).toContain(`${REPO_OWNER}.github.io/${REPO_NAME}`);
+    expect(DATA_SOURCES[0]).toContain(`yiyiko.github.io/${REPO_NAME}`);
     expect(DATA_SOURCES[1]).toContain(`cdn.jsdelivr.net/gh/${REPO_OWNER}/${REPO_NAME}@gh-pages`);
   });
 });
