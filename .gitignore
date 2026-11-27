@@ -9,4 +9,9 @@ dist/
 # Local handoff / temporary files (do not commit to public repo)
 HANDOFF_PROMPT.md
 fixtures/*.local.json
+fixtures/**/*.local.json
 docs/recon/*.local.json
+
+# Upstream mirror synced dynamically by pipeline:sync (do not bloat main branch)
+data/upstream/*
+!data/upstream/.gitkeep

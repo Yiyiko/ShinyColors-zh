@@ -1,0 +1,74 @@
+name: Sync Upstream & Deploy Pages
+
+on:
+  schedule:
+    # Daily at 20:00 UTC (04:00 Beijing Time)
+    - cron: '0 20 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'pipeline/**'
+      - 'data/local/**'
+      - 'data/ai/**'
+      - 'package.json'
+      - 'vite.config.ts'
+      - '.github/workflows/sync-and-deploy.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gh-pages-deploy
+  cancel-in-progress: false
+
+env:
+  LANG: C.UTF-8
+
+jobs:
+  sync-build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Sync upstream ShinyGroup/SCTranslationData
+        run: pnpm run pipeline:sync
+
+      - name: Lint local & AI translations (plus advisory upstream check)
+        run: pnpm run pipeline:lint -- --include-upstream
+
+      - name: Build userscript
+        run: pnpm run build
+
+      - name: Build merged translation dist
+        run: pnpm run pipeline:build
+
+      - name: Verify published artifacts
+        run: |
+          test -f dist/ShinyColors-zh.user.js
+          test -f dist/manifest.json
+          test -f dist/story-index.json
+          cat dist/build-report.json | head -n 40
+
+      - name: Deploy dist/ to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          publish_branch: gh-pages
+          force_orphan: true
+          commit_message: "deploy: sync upstream and publish ShinyColors-zh"
