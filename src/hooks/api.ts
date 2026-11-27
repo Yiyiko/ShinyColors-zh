@@ -3,6 +3,7 @@ import { translateSpeaker } from '../core/story-matcher';
 import type { TemplateTextMatcher } from '../core/template-matcher';
 import type { DataRepository } from '../data/repository';
 import type { StoryEditorStore } from '../dev/story-editor';
+import type { RuntimeTranslator } from '../translate';
 import type { HookContext, HookInstallResult } from './types';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -138,6 +139,7 @@ export function registerDefaultApiRoutes(
   router: ApiRouter,
   repo: DataRepository,
   editor?: StoryEditorStore,
+  translator?: RuntimeTranslator,
 ): void {
   // 1. Missions
   const handleMissions: ApiHandler = async (data) => {
@@ -672,6 +674,7 @@ export function registerDefaultApiRoutes(
     }
 
     const spMap = mergedSpeakerMap ?? nameMap;
+    const missedVoices: Array<{ rec: Record<string, unknown>; norm: string }> = [];
     for (const entry of list) {
       if (!entry || typeof entry !== 'object') continue;
       const rec = entry as Record<string, unknown>;
@@ -687,6 +690,7 @@ export function registerDefaultApiRoutes(
           rec[field] = hit;
         } else {
           editor?.recordUntranslatedVoice(raw);
+          missedVoices.push({ rec, norm });
         }
       }
       if (translateSpeakerName) {
@@ -699,6 +703,20 @@ export function registerDefaultApiRoutes(
             }
           }
         }
+      }
+    }
+
+    if (missedVoices.length > 0 && translator?.isVoiceTranslationEnabled()) {
+      try {
+        const mtMap = await translator.translateVoices(missedVoices.map((m) => m.norm));
+        for (const { rec, norm } of missedVoices) {
+          const trans = mtMap.get(norm);
+          if (trans) {
+            rec[field] = trans;
+          }
+        }
+      } catch {
+        // Silent degrade on live API voice MT failure
       }
     }
   };
@@ -835,7 +853,7 @@ export function installApiHook(
   options: { targetArrayProto?: { push: typeof Array.prototype.push } } = {},
 ): HookInstallResult {
   const router = new ApiRouter();
-  registerDefaultApiRoutes(router, ctx.repo, ctx.editor);
+  registerDefaultApiRoutes(router, ctx.repo, ctx.editor, ctx.translator);
 
   const proto = options.targetArrayProto ?? Array.prototype;
   if (proto === Array.prototype && apiQueueHookInstalled) {

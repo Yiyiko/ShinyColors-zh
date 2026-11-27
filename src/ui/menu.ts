@@ -3,9 +3,11 @@ import { type StoryEditorStore, triggerTextDownload } from '../dev/story-editor'
 import { APP_NAME, APP_VERSION } from '../meta';
 import type { DiagnosticsPanel } from './diagnostics-panel';
 import { showToast } from './toast';
+import type { TranslateSettingsPanel } from './translate-settings';
 
 export interface MenuActions {
   panel: DiagnosticsPanel;
+  mtPanel?: TranslateSettingsPanel;
   editor: StoryEditorStore;
   onToggleEnabled: () => boolean;
   onClearCache: () => Promise<void> | void;
@@ -41,6 +43,12 @@ export function registerUserscriptMenus(actions: MenuActions): void {
   GM_registerMenuCommand(`打开 ${APP_NAME} v${APP_VERSION} 诊断面板`, () => {
     actions.panel.toggle();
   });
+
+  if (actions.mtPanel) {
+    GM_registerMenuCommand('实时机翻设置（自定义 API / 免费保底）', () => {
+      actions.mtPanel?.toggle();
+    });
+  }
 
   GM_registerMenuCommand('切换汉化总开关（刷新后生效）', () => {
     const next = actions.onToggleEnabled();

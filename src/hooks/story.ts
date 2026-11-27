@@ -79,6 +79,7 @@ export function installStoryHook(ctx: HookContext): HookInstallResult {
 
         const nodes: Record<string, unknown>[] = [];
         collectCommentNodes(res, nodes);
+        const missedNodes: Array<{ rec: Record<string, unknown>; norm: string }> = [];
         for (const rec of nodes) {
           const raw = rec.comment as string;
           const norm = normalizeLookupText(raw);
@@ -88,9 +89,22 @@ export function installStoryHook(ctx: HookContext): HookInstallResult {
             rec.comment = hit;
           } else {
             ctx.editor.recordUntranslatedVoice(raw);
+            missedNodes.push({ rec, norm });
           }
           if (typeof rec.speakerName === 'string' && rec.speakerName.trim()) {
             rec.speakerName = translateSpeaker(rec.speakerName, spMap);
+          }
+        }
+
+        if (missedNodes.length > 0 && ctx.translator?.isVoiceTranslationEnabled()) {
+          try {
+            const mtMap = await ctx.translator.translateVoices(missedNodes.map((m) => m.norm));
+            for (const { rec, norm } of missedNodes) {
+              const trans = mtMap.get(norm);
+              if (trans) rec.comment = trans;
+            }
+          } catch (mtErr) {
+            ctx.diag.recordError('mt:voice', mtErr);
           }
         }
       } catch (err) {
@@ -122,28 +136,77 @@ export function installStoryHook(ctx: HookContext): HookInstallResult {
         tagMarker: STORY_TAG_MARKER,
       });
 
-      ctx.diag.setLastStory({
-        path: logicalPath,
-        translator: story ? story.translator || (preview ? '本地预览' : '社区译者') : '暂无译文',
-        isAI: Boolean(story?.isAI),
-        totalLines: stats.totalLines + stats.totalSelects,
-        matchedLines: stats.matchedLines + stats.matchedSelects,
-        coveragePct: stats.coveragePct,
-        updatedAt: new Date().toISOString(),
-      });
+      let translatorLabel = story ? story.translator || (preview ? '本地预览' : '社区译者') : '暂无译文';
+      let isAI = Boolean(story?.isAI);
+      let matchedTotal = stats.matchedLines + stats.matchedSelects;
+      const totalAll = stats.totalLines + stats.totalSelects;
+      let coveragePct = stats.coveragePct;
 
-      if (showHints) {
+      if (!story && !preview && ctx.translator?.isStoryTranslationEnabled()) {
+        if (showHints) {
+          showToast('正在实时机翻本段剧情，请稍候...', { variant: 'info', durationMs: 2500 });
+        }
+        try {
+          const mt = await ctx.translator.translateStory(logicalPath, items);
+          if (mt && (mt.texts.size > 0 || mt.selects.size > 0)) {
+            let mtCount = 0;
+            for (const [idx, trans] of mt.texts) {
+              const target = items[idx];
+              if (target && typeof target.text === 'string' && !target.text.startsWith(STORY_TAG_MARKER)) {
+                target.text = `${STORY_TAG_MARKER}${trans}`;
+                mtCount += 1;
+              }
+            }
+            for (const [idx, trans] of mt.selects) {
+              const target = items[idx];
+              if (target && typeof target.select === 'string') {
+                target.select = trans;
+                mtCount += 1;
+              }
+            }
+            matchedTotal = Math.min(totalAll, matchedTotal + mtCount);
+            coveragePct = totalAll > 0 ? Math.round((matchedTotal / totalAll) * 100) : 100;
+            translatorLabel = `实时机翻(${mt.engineLabel})`;
+            isAI = true;
+            if (showHints) {
+              const suffix = mt.fromCache ? '（本地缓存）' : mt.usedFallback ? '（已降级至免费保底）' : '';
+              showToast(`本段剧情由 ${translatorLabel} 提供${suffix}`, {
+                variant: 'ai',
+                durationMs: 4000,
+              });
+            }
+          }
+        } catch (mtErr) {
+          ctx.diag.recordError('mt:story', mtErr);
+          if (showHints) {
+            showToast(
+              `实时机翻失败：${mtErr instanceof Error ? mtErr.message : String(mtErr)}`,
+              { variant: 'warn', durationMs: 4500 },
+            );
+          }
+        }
+      } else if (showHints) {
         if (preview) {
           showToast(`正在预览本地剧情译文：${logicalPath}`, { variant: 'info', durationMs: 3000 });
         } else if (story?.isAI) {
           showToast(`本段剧情由 ${story.translator} 提供机翻`, { variant: 'ai', durationMs: 4500 });
         } else if (!story) {
-          showToast(`该剧情暂无中文译文（可通过菜单导出 CSV）`, {
+          showToast(`该剧情暂无中文译文（可在菜单中开启实时机翻或导出 CSV）`, {
             variant: 'warn',
             durationMs: 3500,
           });
         }
       }
+
+      ctx.diag.setLastStory({
+        path: logicalPath,
+        translator: translatorLabel,
+        isAI,
+        totalLines: totalAll,
+        matchedLines: matchedTotal,
+        coveragePct,
+        updatedAt: new Date().toISOString(),
+      });
     } catch (err) {
       ctx.diag.recordError('story', err);
     }

@@ -8,3 +8,4 @@ export {
 } from './diagnostics-panel';
 export { registerUserscriptMenus, type MenuActions } from './menu';
 export { showToast, type ToastVariant } from './toast';
+export { TranslateSettingsPanel } from './translate-settings';

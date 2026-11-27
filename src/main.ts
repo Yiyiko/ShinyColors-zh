@@ -11,7 +11,13 @@ import {
 } from './hooks';
 import { locateAllModules } from './locator';
 import { APP_NAME, APP_VERSION } from './meta';
-import { DiagnosticsPanel, DiagnosticsStore, registerUserscriptMenus } from './ui';
+import { RuntimeTranslator } from './translate';
+import {
+  DiagnosticsPanel,
+  DiagnosticsStore,
+  registerUserscriptMenus,
+  TranslateSettingsPanel,
+} from './ui';
 
 const ENABLED_STORAGE_KEY = 'sczh:enabled';
 
@@ -45,6 +51,8 @@ async function bootstrap(): Promise<void> {
   const repo = new DataRepository();
   const diag = new DiagnosticsStore();
   const editor = new StoryEditorStore();
+  const translator = new RuntimeTranslator();
+  const mtPanel = new TranslateSettingsPanel(translator);
   diag.setEnabled(enabled);
 
   const panel = new DiagnosticsPanel(diag, {
@@ -53,6 +61,7 @@ async function bootstrap(): Promise<void> {
       const next = toggleEnabledFlag();
       diag.setEnabled(next);
     },
+    onOpenMtSettings: () => mtPanel.toggle(),
     getUntranslatedVoicesCsv: () => ({
       count: editor.getUntranslatedVoiceCount(),
       csv: editor.exportUntranslatedVoicesCsv(),
@@ -61,6 +70,7 @@ async function bootstrap(): Promise<void> {
 
   registerUserscriptMenus({
     panel,
+    mtPanel,
     editor,
     onToggleEnabled: () => {
       const next = toggleEnabledFlag();
@@ -99,6 +109,7 @@ async function bootstrap(): Promise<void> {
     repo,
     diag,
     editor,
+    translator,
   });
 
   // Do NOT block on ezgHandle.promise (which can wait 30s if window.ezg was cleared before defineProperty).
@@ -124,7 +135,7 @@ async function bootstrap(): Promise<void> {
   });
   diag.setModules(modules);
 
-  const hookCtx = { modules, repo, diag, editor };
+  const hookCtx = { modules, repo, diag, editor, translator };
 
   // Install remaining feature hooks concurrently; each isolates its own errors
   installStoryHook(hookCtx);

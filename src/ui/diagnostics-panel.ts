@@ -189,6 +189,7 @@ export class DiagnosticsPanel {
     private readonly actions?: {
       onClearCache?: () => Promise<void> | void;
       onToggleEnabled?: () => void;
+      onOpenMtSettings?: () => void;
       getUntranslatedVoicesCsv?: () => { count: number; csv: string | null };
     },
   ) {}
@@ -303,6 +304,7 @@ export class DiagnosticsPanel {
         <div class="hdr">
           <div class="title">${APP_NAME} v${s.version} 诊断面板</div>
           <div class="btns">
+            <button id="btn-mt">机翻设置</button>
             <button id="btn-copy">复制报告</button>
             <button id="btn-voices">复制未翻语音(${voiceInfo.count})</button>
             <button id="btn-clear">清缓存</button>
@@ -327,6 +329,9 @@ export class DiagnosticsPanel {
     `;
 
     this.shadow.getElementById('btn-close')?.addEventListener('click', () => this.hide());
+    this.shadow.getElementById('btn-mt')?.addEventListener('click', () => {
+      this.actions?.onOpenMtSettings?.();
+    });
     this.shadow.getElementById('btn-copy')?.addEventListener('click', () => {
       const text = JSON.stringify(this.store.getSnapshot(), null, 2);
       void navigator.clipboard?.writeText(text);

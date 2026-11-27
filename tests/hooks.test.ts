@@ -10,6 +10,7 @@ import {
   installTextHook,
 } from '../src/hooks';
 import type { LocateResult, ModuleName } from '../src/locator';
+import { createDefaultMtConfig, RuntimeTranslator } from '../src/translate';
 import { DiagnosticsStore } from '../src/ui/diagnostics-panel';
 
 function createMockRepo(): DataRepository {
@@ -151,6 +152,33 @@ describe('P3 feature hooks end-to-end with mock game modules', () => {
     expect(voices[0].comment).toBe('你好\n世界');
     expect(voices[0].speakerName).toBe('灯织');
     expect(editor.getUntranslatedVoiceCount()).toBe(1);
+
+    // Untranslated story falls back to RuntimeTranslator while translated story never invokes MT
+    const mtHttp = vi.fn(async () => ({
+      status: 200,
+      text: JSON.stringify([[['实时机翻台词']]]),
+    }));
+    const translator = new RuntimeTranslator({
+      cache: new MemoryCache(),
+      http: mtHttp,
+      config: createDefaultMtConfig(),
+    });
+    const untransScenario = {
+      load: vi.fn(async (_p: string) => [{ id: '2001000000001', speaker: '真乃', text: '新しいセリフ' }]),
+    };
+    installStoryHook({
+      modules: makeModules({ SCENARIO: untransScenario }),
+      repo,
+      diag,
+      editor,
+      translator,
+      showStoryHints: false,
+    });
+    const mtLoaded = (await untransScenario.load('/assets/json/produce_events/999999.json')) as any[];
+    expect(mtLoaded[0].text).toBe('\u200c实时机翻台词');
+    expect(diag.getSnapshot().lastStory?.isAI).toBe(true);
+    expect(diag.getSnapshot().lastStory?.translator).toContain('实时机翻');
+    expect(mtHttp).toHaveBeenCalledTimes(1);
   });
 
   it('installs phrase hook safely before init() is called', async () => {
