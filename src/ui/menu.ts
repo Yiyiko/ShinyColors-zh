@@ -83,6 +83,17 @@ export function registerUserscriptMenus(actions: MenuActions): void {
     showToast(`已导出 ${count} 篇未翻译剧情原文包`, { variant: 'info' });
   });
 
+  GM_registerMenuCommand('导出未翻译语音/短句 CSV', () => {
+    const csv = actions.editor.exportUntranslatedVoicesCsv();
+    const count = actions.editor.getUntranslatedVoiceCount();
+    if (!csv || count === 0) {
+      showToast('本次会话暂未记录到未翻译主页/培育语音', { variant: 'info' });
+      return;
+    }
+    triggerTextDownload(`sczh-untranslated-voices-${Date.now()}.csv`, csv);
+    showToast(`已导出 ${count} 条未翻译语音 CSV`, { variant: 'info' });
+  });
+
   GM_registerMenuCommand('设置自定义数据源 URL', () => {
     const current = readCustomSource() ?? '';
     const next = prompt(

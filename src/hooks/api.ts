@@ -1,5 +1,8 @@
+import { normalizeLookupText } from '../core/normalize';
+import { translateSpeaker } from '../core/story-matcher';
 import type { TemplateTextMatcher } from '../core/template-matcher';
 import type { DataRepository } from '../data/repository';
+import type { StoryEditorStore } from '../dev/story-editor';
 import type { HookContext, HookInstallResult } from './types';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -131,7 +134,11 @@ function translateSkillPanels(panels: unknown, skillMatcher: TemplateTextMatcher
   }
 }
 
-export function registerDefaultApiRoutes(router: ApiRouter, repo: DataRepository): void {
+export function registerDefaultApiRoutes(
+  router: ApiRouter,
+  repo: DataRepository,
+  editor?: StoryEditorStore,
+): void {
   // 1. Missions
   const handleMissions: ApiHandler = async (data) => {
     const [missionMatcher, itemMatcher] = await Promise.all([
@@ -149,10 +156,44 @@ export function registerDefaultApiRoutes(router: ApiRouter, repo: DataRepository
         translateMissionList((grp as { userMissions?: unknown })?.userMissions, missionMatcher, itemMatcher);
       }
     }
+    // myPage beginnerMission, userRecommendedMission & producerDesk.messages
+    const beginner = data.beginnerMission as Record<string, unknown> | undefined;
+    if (beginner) {
+      if (beginner.clearedLectureMission) {
+        translateMissionList([beginner.clearedLectureMission], missionMatcher, itemMatcher);
+      }
+      if (beginner.progressLectureMission) {
+        translateMissionList([beginner.progressLectureMission], missionMatcher, itemMatcher);
+      }
+    }
+    const recMission = (data.userRecommendedMission as { mission?: unknown } | undefined)?.mission;
+    if (recMission) {
+      translateMissionList([recMission], missionMatcher, itemMatcher);
+    }
+    const desk = data.producerDesk as { messages?: unknown } | undefined;
+    if (Array.isArray(desk?.messages)) {
+      for (let i = 0; i < desk.messages.length; i++) {
+        if (typeof desk.messages[i] === 'string') {
+          desk.messages[i] = missionMatcher.translate(desk.messages[i] as string);
+        }
+      }
+    }
+    if (Array.isArray(data.progresses)) {
+      for (const p of data.progresses) {
+        if (p && typeof p === 'object') {
+          missionMatcher.translateField(p as Record<string, unknown>, 'title');
+          missionMatcher.translateField(p as Record<string, unknown>, 'comment');
+        }
+      }
+    }
   };
 
   router.register('GET', ['userMissions', 'userBeginnerMissions/top', 'idolRoads/top'], handleMissions);
-  router.register('POST', ['myPage', 'userLectureMissions/{num}/actions/receive'], handleMissions);
+  router.register(
+    'POST',
+    ['myPage', 'userLectureMissions/{num}/actions/receive', 'producerDesk/top'],
+    handleMissions,
+  );
 
   // 2. Items & Shops
   const ITEM_SUBKEYS = [
@@ -566,6 +607,178 @@ export function registerDefaultApiRoutes(router: ApiRouter, repo: DataRepository
   };
   router.register('GET', ['userIdols/{num}', 'userSupportIdols/{num}', 'userFesIdols/{num}'], handleCharacterProfile);
   router.register('POST', ['characterAlbums/characters/{num}'], handleCharacterProfile);
+
+  // 9. Character Voice Bubbles & Comments (myPage / fesTop / produce / gasha / album)
+  let noWrapVoiceCache: Map<string, string> | null = null;
+  const translateVoiceField = async (
+    list: unknown[],
+    field = 'comment',
+    translateSpeakerName = false,
+  ): Promise<void> => {
+    if (list.length === 0) return;
+    const [typeTextMap, commStoryMap, nameMap] = await Promise.all([
+      repo.getTypeTextMap(),
+      repo.getCommStoryMap(),
+      repo.getNameMap(),
+    ]);
+
+    if (!noWrapVoiceCache && (typeTextMap.size > 0 || commStoryMap.size > 0)) {
+      noWrapVoiceCache = new Map<string, string>();
+      for (const [k, v] of typeTextMap) {
+        const compact = k.replace(/\n+/g, '');
+        if (compact && !noWrapVoiceCache.has(compact)) noWrapVoiceCache.set(compact, v);
+      }
+      for (const [k, v] of commStoryMap) {
+        const compact = k.replace(/\n+/g, '');
+        if (compact && !noWrapVoiceCache.has(compact)) noWrapVoiceCache.set(compact, v);
+      }
+    }
+
+    for (const entry of list) {
+      if (!entry || typeof entry !== 'object') continue;
+      const rec = entry as Record<string, unknown>;
+      if (typeof rec[field] === 'string' && (rec[field] as string).trim()) {
+        const raw = rec[field] as string;
+        const norm = normalizeLookupText(raw);
+        const compact = norm.replace(/\n+/g, '');
+        const hit =
+          typeTextMap.get(norm) ??
+          commStoryMap.get(norm) ??
+          noWrapVoiceCache?.get(compact);
+        if (hit) {
+          rec[field] = hit;
+        } else {
+          editor?.recordUntranslatedVoice(raw);
+        }
+      }
+      if (translateSpeakerName && typeof rec.speakerName === 'string' && rec.speakerName.trim()) {
+        rec.speakerName = translateSpeaker(rec.speakerName, nameMap);
+      }
+    }
+  };
+
+  const handleMyPageVoices: ApiHandler = async (data) => {
+    const deck = data.userHomeDeck as Record<string, unknown> | undefined;
+    if (!deck) return;
+    const list: unknown[] = [];
+
+    const animMember = deck.userHomeDeckAnimationMember as { mypageComments?: unknown[] } | undefined;
+    if (Array.isArray(animMember?.mypageComments)) {
+      list.push(...animMember.mypageComments);
+    }
+
+    const animDeck = deck.userHomeAnimationDeck as
+      | { userHomeAnimationDeckMembers?: Array<{ mypageComments?: unknown[]; mypageConversations?: Array<{ mypageConversationComments?: unknown[] }> }> }
+      | undefined;
+    if (Array.isArray(animDeck?.userHomeAnimationDeckMembers)) {
+      for (const m of animDeck.userHomeAnimationDeckMembers) {
+        if (Array.isArray(m?.mypageComments)) list.push(...m.mypageComments);
+        if (Array.isArray(m?.mypageConversations)) {
+          for (const conv of m.mypageConversations) {
+            if (Array.isArray(conv?.mypageConversationComments)) {
+              list.push(...conv.mypageConversationComments);
+            }
+          }
+        }
+      }
+    }
+
+    if (Array.isArray(deck.userHomeDeckMembers)) {
+      for (const m of deck.userHomeDeckMembers as Array<{ mypageComments?: unknown[] }>) {
+        if (Array.isArray(m?.mypageComments)) list.push(...m.mypageComments);
+      }
+    }
+
+    await translateVoiceField(list, 'comment', true);
+  };
+
+  const handleFesTopVoices: ApiHandler = async (data) => {
+    const members = (data.userFesDeck as { userFesDeckMembers?: Array<{ fesTopCharacterReactions?: unknown[] }> } | undefined)
+      ?.userFesDeckMembers;
+    if (!Array.isArray(members)) return;
+    const list: unknown[] = [];
+    for (const m of members) {
+      if (Array.isArray(m?.fesTopCharacterReactions)) list.push(...m.fesTopCharacterReactions);
+    }
+    await translateVoiceField(list, 'comment', false);
+  };
+
+  const handleProduceVoices: ApiHandler = async (data) => {
+    const list: unknown[] = [];
+    const topReact = data.topCharacterReaction as Record<string, unknown> | undefined;
+    if (topReact) {
+      for (const k of [
+        'moveReactions',
+        'skillReleasedReactions',
+        'touchExReactions',
+        'touchReactions',
+        'waitReactions',
+      ]) {
+        if (Array.isArray(topReact[k])) list.push(...(topReact[k] as unknown[]));
+      }
+    }
+    for (const k of [
+      'produceStaffComments',
+      'produceStaffConcertComments',
+      'produceStaffFailComments',
+      'produceStaffSeasonComments',
+      'characterTrustLevelUpComments',
+    ]) {
+      if (Array.isArray(data[k])) list.push(...(data[k] as unknown[]));
+    }
+    if (data.characterComment) {
+      list.push(...(Array.isArray(data.characterComment) ? data.characterComment : [data.characterComment]));
+    }
+    const lr = data.lessonResult as Record<string, unknown> | undefined;
+    if (lr) {
+      for (const k of [
+        'produceActCutinComment',
+        'produceRestBoostIdolComment',
+        'produceRestBoostSupportIdolComment',
+        'produceRestComments',
+      ]) {
+        if (lr[k]) list.push(...(Array.isArray(lr[k]) ? (lr[k] as unknown[]) : [lr[k]]));
+      }
+    }
+    await translateVoiceField(list, 'comment', true);
+  };
+
+  const handleAlbumAndGashaVoices: ApiHandler = async (data) => {
+    const list: unknown[] = [];
+    if (Array.isArray(data.produceIdols)) {
+      for (const p of data.produceIdols as Array<{ comment?: unknown }>) {
+        if (p?.comment) list.push(p.comment);
+      }
+    }
+    if (Array.isArray(data.voices)) {
+      for (const v of data.voices as Array<{ characterTrustLevelComment?: unknown }>) {
+        if (v?.characterTrustLevelComment) list.push(v.characterTrustLevelComment);
+      }
+    }
+    if (Array.isArray(data.gashaDraws)) {
+      for (const g of data.gashaDraws as Array<{ comment?: unknown }>) {
+        if (g?.comment) list.push(g.comment);
+      }
+    }
+    await translateVoiceField(list, 'comment', false);
+  };
+
+  router.register('GET', ['userProduces'], handleProduceVoices);
+  router.register('POST', ['myPage'], handleMyPageVoices);
+  router.register('POST', ['fesTop'], handleFesTopVoices);
+  router.register(
+    'POST',
+    [
+      'produces/actions/(resume|next|endWeek|act|result)',
+      'produces/({num}/audition|concert)/actions/(start|finish)',
+    ],
+    handleProduceVoices,
+  );
+  router.register(
+    'POST',
+    ['characterAlbums/characters/{num}', 'gashas/{num}/actions/draw'],
+    handleAlbumAndGashaVoices,
+  );
 }
 
 let apiQueueHookInstalled = false;
@@ -575,7 +788,7 @@ export function installApiHook(
   options: { targetArrayProto?: { push: typeof Array.prototype.push } } = {},
 ): HookInstallResult {
   const router = new ApiRouter();
-  registerDefaultApiRoutes(router, ctx.repo);
+  registerDefaultApiRoutes(router, ctx.repo, ctx.editor);
 
   const proto = options.targetArrayProto ?? Array.prototype;
   if (proto === Array.prototype && apiQueueHookInstalled) {
@@ -621,6 +834,10 @@ export function installApiHook(
     apiQueueHookInstalled = true;
   }
 
-  ctx.diag.setHook('api', 'ok', 'queue guard active (mission/item/skill/title)');
-  return { name: 'api', status: 'ok', detail: 'queue guard active (mission/item/skill/title)' };
+  ctx.diag.setHook('api', 'ok', 'queue guard active (mission/item/skill/title/voice/profile)');
+  return {
+    name: 'api',
+    status: 'ok',
+    detail: 'queue guard active (mission/item/skill/title/voice/profile)',
+  };
 }

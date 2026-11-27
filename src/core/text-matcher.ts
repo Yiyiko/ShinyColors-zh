@@ -16,6 +16,8 @@ export interface TextMatcherOptions {
 export class PixiTextMatcher {
   private commonMap: ReadonlyMap<string, string>;
   private typeTextMap: ReadonlyMap<string, string>;
+  private commonNoWrapMap = new Map<string, string>();
+  private typeTextNoWrapMap = new Map<string, string>();
   private readonly typingTtlMs: number;
   private readonly now: () => number;
   private activeTyping: Array<{ text: string; expiresAt: number }> = [];
@@ -25,6 +27,7 @@ export class PixiTextMatcher {
     this.typeTextMap = options.typeTextMap ?? new Map();
     this.typingTtlMs = options.typingTtlMs ?? 10_000;
     this.now = options.now ?? (() => Date.now());
+    this.rebuildNoWrapIndexes();
   }
 
   setDictionaries(
@@ -33,6 +36,24 @@ export class PixiTextMatcher {
   ): void {
     this.commonMap = commonMap;
     this.typeTextMap = typeTextMap;
+    this.rebuildNoWrapIndexes();
+  }
+
+  private rebuildNoWrapIndexes(): void {
+    this.commonNoWrapMap.clear();
+    for (const [k, v] of this.commonMap) {
+      const compact = k.replace(/\n+/g, '');
+      if (compact && !this.commonNoWrapMap.has(compact)) {
+        this.commonNoWrapMap.set(compact, v);
+      }
+    }
+    this.typeTextNoWrapMap.clear();
+    for (const [k, v] of this.typeTextMap) {
+      const compact = k.replace(/\n+/g, '');
+      if (compact && !this.typeTextNoWrapMap.has(compact)) {
+        this.typeTextNoWrapMap.set(compact, v);
+      }
+    }
   }
 
   private pruneExpired(): void {
@@ -58,7 +79,8 @@ export class PixiTextMatcher {
   translateTypeText(text: string): string {
     if (typeof text !== 'string' || !text.trim()) return text;
     const key = normalizeLookupText(text);
-    const hit = this.typeTextMap.get(key);
+    const hit =
+      this.typeTextMap.get(key) ?? this.typeTextNoWrapMap.get(key.replace(/\n+/g, ''));
     const result = hit ?? text;
     this.recordTyping(result);
     return result;
@@ -69,6 +91,12 @@ export class PixiTextMatcher {
     if (text.startsWith(STORY_TAG_MARKER)) return text;
     if (this.isTypingPrefix(text)) return text;
     const key = normalizeLookupText(text);
-    return this.commonMap.get(key) ?? text;
+    return (
+      this.commonMap.get(key) ??
+      this.commonNoWrapMap.get(key.replace(/\n+/g, '')) ??
+      this.typeTextMap.get(key) ??
+      this.typeTextNoWrapMap.get(key.replace(/\n+/g, '')) ??
+      text
+    );
   }
 }

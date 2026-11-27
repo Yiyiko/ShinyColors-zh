@@ -51,9 +51,9 @@ function createMockRepo(): DataRepository {
     ].join('\n'),
     'data/phrase.csv': 'id,text,trans\nhome.btn,ホーム,主页\n',
     'data/common.csv': 'text,trans\n昇格ライン,升格分数线\n',
-    'data/type-text.csv': 'text,trans\n頑張ろう！,加油！\n',
+    'data/type-text.csv': 'text,trans\n頑張ろう！,加油！\nこんにちは\\n世界,你好\\n世界\n',
     'data/comm-story.csv': 'text,trans\nお疲れ様,辛苦了\n',
-    'data/name.csv': 'name,trans\nプロデューサー,制作人\n真乃,真乃\n',
+    'data/name.csv': 'name,trans\nプロデューサー,制作人\n真乃,真乃\n灯織,灯织\n',
     'data/etc/idol-name.csv': 'name,trans\n櫻木真乃,樱木真乃\n',
     'data/etc/mission.csv': 'text,trans,type\nフェスをプレイしよう,进行1次Fes,text\n',
     'data/etc/item.csv': 'text,trans,type\nキーホルダー,钥匙链,text\n',
@@ -344,5 +344,35 @@ describe('P3 feature hooks end-to-end with mock game modules', () => {
     expect(sptBody.supportIdol.character.name).toBe('樱木真乃');
     expect(sptBody.supportIdol.character.hobby).toBe('散步');
     expect(sptBody.supportIdol.character.unit.name).toBe('illumination STARS');
+
+    // Test myPage voice bubbles, speakerName, and producerDesk.messages
+    let myPageBody: any = null;
+    fakeProto.push.call(queue, {
+      method: 'post',
+      path: 'myPage',
+      options: {},
+      resolve: (resp: any) => {
+        myPageBody = resp.body;
+      },
+    });
+    await queue[2].resolve({
+      body: {
+        producerDesk: { messages: ['フェスをプレイしよう'] },
+        userHomeDeck: {
+          userHomeDeckMembers: [
+            {
+              mypageComments: [
+                { comment: 'こんにちは世界', speakerName: '灯織' },
+                { comment: '未翻訳ボイス', speakerName: '灯織' },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    expect(myPageBody.producerDesk.messages[0]).toBe('进行1次Fes');
+    expect(myPageBody.userHomeDeck.userHomeDeckMembers[0].mypageComments[0].comment).toBe('你好\n世界');
+    expect(myPageBody.userHomeDeck.userHomeDeckMembers[0].mypageComments[0].speakerName).toBe('灯织');
+    expect(editor.getUntranslatedVoiceCount()).toBe(1);
   });
 });

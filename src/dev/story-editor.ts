@@ -1,4 +1,5 @@
-import { normalizeStoryPath } from '../core/normalize';
+import Papa from 'papaparse';
+import { encodeCsvNewlines, normalizeStoryPath } from '../core/normalize';
 import type { StoryItem } from '../core/story-matcher';
 import { exportStoryToCsv, parseStoryCsv, type ParsedStoryCsv } from '../data/csv';
 
@@ -13,8 +14,28 @@ export interface CapturedStorySnapshot {
 export class StoryEditorStore {
   private lastStory: CapturedStorySnapshot | null = null;
   private untranslated = new Map<string, StoryItem[]>();
+  private untranslatedVoices = new Set<string>();
   private previewMap = new Map<string, ParsedStoryCsv>();
   private loadedPreview = false;
+
+  recordUntranslatedVoice(text: string): void {
+    const clean = text.trim();
+    if (!clean || this.untranslatedVoices.size >= 500) return;
+    this.untranslatedVoices.add(clean);
+  }
+
+  getUntranslatedVoiceCount(): number {
+    return this.untranslatedVoices.size;
+  }
+
+  exportUntranslatedVoicesCsv(): string | null {
+    if (this.untranslatedVoices.size === 0) return null;
+    const rows = Array.from(this.untranslatedVoices).map((t) => ({
+      text: encodeCsvNewlines(t),
+      trans: '',
+    }));
+    return Papa.unparse(rows, { columns: ['text', 'trans'], newline: '\n' }) + '\n';
+  }
 
   recordLoadedStory(logicalPath: string, rawItems: readonly StoryItem[], hasTranslation: boolean): void {
     const norm = normalizeStoryPath(logicalPath);

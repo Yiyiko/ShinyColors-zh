@@ -66,7 +66,14 @@ export async function installResourceHook(ctx: HookContext): Promise<HookInstall
             if (nextUrl) {
               this.url = nextUrl;
               this.crossOrigin = 'anonymous';
+              ctx.diag.recordResourceReplaced();
             }
+          } else if (rule) {
+            ctx.diag.recordResourceMismatch({
+              name: this.name,
+              expectedVersion: rule.version,
+              actualUrl: this.url,
+            });
           } else if (this.name.startsWith('images/')) {
             const picRel = this.name.slice('images/'.length);
             if (pictureMap.has(picRel)) {
@@ -74,6 +81,7 @@ export async function installResourceHook(ctx: HookContext): Promise<HookInstall
               if (nextUrl) {
                 this.url = nextUrl;
                 this.crossOrigin = 'anonymous';
+                ctx.diag.recordResourceReplaced();
               }
             }
           }

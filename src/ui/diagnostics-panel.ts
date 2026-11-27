@@ -19,6 +19,12 @@ export interface StoryCoverageEntry {
   updatedAt: string;
 }
 
+export interface ResourceVersionMismatch {
+  name: string;
+  expectedVersion: string;
+  actualUrl: string;
+}
+
 export interface DiagnosticsSnapshot {
   version: string;
   enabled: boolean;
@@ -34,6 +40,8 @@ export interface DiagnosticsSnapshot {
     upstreamCommit: string;
   };
   lastStory: StoryCoverageEntry | null;
+  resourceReplacedCount: number;
+  resourceMismatches: ResourceVersionMismatch[];
   errors: Array<{ scope: string; message: string; at: string }>;
 }
 
@@ -74,6 +82,8 @@ export class DiagnosticsStore {
         upstreamCommit: '-',
       },
       lastStory: null,
+      resourceReplacedCount: 0,
+      resourceMismatches: [],
       errors: [],
     };
   }
@@ -143,6 +153,18 @@ export class DiagnosticsStore {
 
   setLastStory(entry: StoryCoverageEntry): void {
     this.state.lastStory = entry;
+    this.emit();
+  }
+
+  recordResourceReplaced(): void {
+    this.state.resourceReplacedCount += 1;
+    this.emit();
+  }
+
+  recordResourceMismatch(item: ResourceVersionMismatch): void {
+    if (this.state.resourceMismatches.length >= 20) return;
+    if (this.state.resourceMismatches.some((x) => x.name === item.name)) return;
+    this.state.resourceMismatches.push(item);
     this.emit();
   }
 
