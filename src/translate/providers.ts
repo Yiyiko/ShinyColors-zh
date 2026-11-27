@@ -255,84 +255,150 @@ export async function translateWithCaiyun(options: ProviderTranslateOptions): Pr
 }
 
 /**
- * Zero-key fallback using Google Translate public NMT endpoint.
- * Packs lines with a resilient numeric tag delimiter so batch translation completes in 1-2 requests.
+ * Zero-key 3-tier fallback chain to defeat shared-proxy HTTP 429 rate limits:
+ * 1) clients5.google.com/translate_a/t (native multi-q JSON array, anonymous)
+ * 2) translate.googleapis.com/translate_a/single (gtx, anonymous)
+ * 3) api.mymemory.translated.net/get (non-Google independent backup)
  */
 export async function translateWithFreeGoogle(options: ProviderTranslateOptions): Promise<string[]> {
   const { config, lines } = options;
   const http = options.http ?? defaultMtHttpClient;
-  const endpoint = (config.provider === 'free-google' && config.baseUrl)
-    ? config.baseUrl
-    : 'https://translate.googleapis.com/translate_a/single';
+  const errors: string[] = [];
 
-  const requestGoogle = async (queryText: string): Promise<string> => {
-    const url = `${endpoint}?client=gtx&sl=ja&tl=zh-CN&dt=t`;
-    const res = await http({
-      url,
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-      },
-      body: `q=${encodeURIComponent(queryText)}`,
-      timeoutMs: config.timeoutMs,
-    });
-    if (res.status < 200 || res.status >= 300) {
-      throw new Error(`免费保底翻译 HTTP ${res.status}`);
-    }
-    const parsed = JSON.parse(res.text) as unknown[];
-    const segments = Array.isArray(parsed[0]) ? (parsed[0] as unknown[][]) : [];
-    return segments.map((seg) => (typeof seg?.[0] === 'string' ? seg[0] : '')).join('');
-  };
-
-  const translateSingle = async (text: string): Promise<string> => {
-    const joined = await requestGoogle(text);
-    return applyShinyTermsFix(joined || text);
-  };
-
-  if (lines.length === 1) {
-    return [await translateSingle(lines[0].text)];
-  }
-
-  // Pack lines into <= 1200 char batches separated by resilient [idx] markers
-  const out: string[] = new Array(lines.length);
-  let cursor = 0;
-  while (cursor < lines.length) {
-    const batchIdx: number[] = [];
-    const parts: string[] = [];
-    let charCount = 0;
-    while (cursor < lines.length) {
-      const encoded = lines[cursor].text.replace(/\r?\n/g, ' ⏎ ');
-      const piece = `[${cursor}] ${encoded}`;
-      if (batchIdx.length > 0 && charCount + piece.length > 1200) break;
-      batchIdx.push(cursor);
-      parts.push(piece);
-      charCount += piece.length + 1;
-      cursor += 1;
-    }
-
-    const mergedText = await requestGoogle(parts.join('\n'));
-
-    // Google Translate may output either [0] or 【0】; accept both!
-    const matched = new Map<number, string>();
-    const markerRe = /(?:【|\[)\s*(\d+)\s*(?:】|\])\s*([\s\S]*?)(?=(?:【|\[)\s*\d+\s*(?:】|\])|$)/g;
-    let m: RegExpExecArray | null;
-    while ((m = markerRe.exec(mergedText)) !== null) {
-      const idx = Number(m[1]);
-      const val = applyShinyTermsFix(m[2].replace(/\s*⏎\s*/g, '\n'));
-      matched.set(idx, val);
-    }
-
-    for (const idx of batchIdx) {
-      const hit = matched.get(idx);
-      if (hit) {
-        out[idx] = hit;
+  // Tier 1: clients5.google.com multi-q POST (native JSON array, 1-to-1 line alignment)
+  try {
+    const out: string[] = [];
+    for (let i = 0; i < lines.length; i += 25) {
+      const slice = lines.slice(i, i + 25);
+      const body = slice.map((l) => `q=${encodeURIComponent(l.text)}`).join('&');
+      const res = await http({
+        url: 'https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=ja&tl=zh-CN',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body,
+        anonymous: true,
+        timeoutMs: config.timeoutMs,
+      });
+      if (res.status < 200 || res.status >= 300) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const parsed = JSON.parse(res.text) as unknown;
+      if (Array.isArray(parsed) && parsed.length === slice.length) {
+        for (const item of parsed) {
+          const text = Array.isArray(item) ? String(item[0] ?? '') : String(item ?? '');
+          out.push(applyShinyTermsFix(text));
+        }
       } else {
-        out[idx] = await translateSingle(lines[idx].text);
+        throw new Error('unexpected response shape');
       }
     }
+    return out;
+  } catch (err) {
+    errors.push(`clients5: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  return out;
+  // Tier 2: translate.googleapis.com/translate_a/single (anonymous POST)
+  try {
+    const endpoint = 'https://translate.googleapis.com/translate_a/single';
+    const requestGtx = async (queryText: string): Promise<string> => {
+      const res = await http({
+        url: `${endpoint}?client=gtx&sl=ja&tl=zh-CN&dt=t`,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body: `q=${encodeURIComponent(queryText)}`,
+        anonymous: true,
+        timeoutMs: config.timeoutMs,
+      });
+      if (res.status < 200 || res.status >= 300) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const parsed = JSON.parse(res.text) as unknown[];
+      const segments = Array.isArray(parsed[0]) ? (parsed[0] as unknown[][]) : [];
+      return segments.map((seg) => (typeof seg?.[0] === 'string' ? seg[0] : '')).join('');
+    };
+
+    if (lines.length === 1) {
+      return [applyShinyTermsFix((await requestGtx(lines[0].text)) || lines[0].text)];
+    }
+
+    const out: string[] = new Array(lines.length);
+    let cursor = 0;
+    while (cursor < lines.length) {
+      const batchIdx: number[] = [];
+      const parts: string[] = [];
+      let charCount = 0;
+      while (cursor < lines.length) {
+        const encoded = lines[cursor].text.replace(/\r?\n/g, ' ⏎ ');
+        const piece = `[${cursor}] ${encoded}`;
+        if (batchIdx.length > 0 && charCount + piece.length > 1200) break;
+        batchIdx.push(cursor);
+        parts.push(piece);
+        charCount += piece.length + 1;
+        cursor += 1;
+      }
+      const mergedText = await requestGtx(parts.join('\n'));
+      const matched = new Map<number, string>();
+      const markerRe = /(?:【|\[)\s*(\d+)\s*(?:】|\])\s*([\s\S]*?)(?=(?:【|\[)\s*\d+\s*(?:】|\])|$)/g;
+      let m: RegExpExecArray | null;
+      while ((m = markerRe.exec(mergedText)) !== null) {
+        matched.set(Number(m[1]), applyShinyTermsFix(m[2].replace(/\s*⏎\s*/g, '\n')));
+      }
+      for (const idx of batchIdx) {
+        out[idx] = matched.get(idx) ?? applyShinyTermsFix(await requestGtx(lines[idx].text));
+      }
+    }
+    return out;
+  } catch (err) {
+    errors.push(`gtx: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // Tier 3: MyMemory independent public API (non-Google backup, works even when Google is 429'd)
+  try {
+    const out: string[] = new Array(lines.length);
+    let cursor = 0;
+    while (cursor < lines.length) {
+      const batchIdx: number[] = [];
+      const parts: string[] = [];
+      let charCount = 0;
+      while (cursor < lines.length) {
+        const encoded = lines[cursor].text.replace(/\r?\n/g, ' ⏎ ');
+        const piece = `[${cursor}] ${encoded}`;
+        // MyMemory caps query at ~500 chars
+        if (batchIdx.length > 0 && charCount + piece.length > 420) break;
+        batchIdx.push(cursor);
+        parts.push(piece);
+        charCount += piece.length + 1;
+        cursor += 1;
+      }
+      const queryText = batchIdx.length === 1 ? lines[batchIdx[0]].text : parts.join('\n');
+      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(queryText)}&langpair=ja|zh-CN`;
+      const res = await http({ url, method: 'GET', anonymous: true, timeoutMs: config.timeoutMs });
+      if (res.status < 200 || res.status >= 300) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = JSON.parse(res.text) as { responseData?: { translatedText?: string }; responseStatus?: number };
+      const translated = data.responseData?.translatedText;
+      if (!translated) throw new Error('empty translatedText');
+      if (batchIdx.length === 1) {
+        out[batchIdx[0]] = applyShinyTermsFix(translated);
+      } else {
+        const matched = new Map<number, string>();
+        const markerRe = /(?:【|\[)\s*(\d+)\s*(?:】|\])\s*([\s\S]*?)(?=(?:【|\[)\s*\d+\s*(?:】|\])|$)/g;
+        let m: RegExpExecArray | null;
+        while ((m = markerRe.exec(translated)) !== null) {
+          matched.set(Number(m[1]), applyShinyTermsFix(m[2].replace(/\s*⏎\s*/g, '\n')));
+        }
+        for (const idx of batchIdx) {
+          out[idx] = matched.get(idx) ?? applyShinyTermsFix(lines[idx].text);
+        }
+      }
+    }
+    return out;
+  } catch (err) {
+    errors.push(`mymemory: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  throw new Error(`免费保底 3 个通道均失败 (${errors.join(' | ')})`);
 }
 
 export async function dispatchProviderTranslate(

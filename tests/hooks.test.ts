@@ -156,7 +156,7 @@ describe('P3 feature hooks end-to-end with mock game modules', () => {
     // Untranslated story falls back to RuntimeTranslator while translated story never invokes MT
     const mtHttp = vi.fn(async () => ({
       status: 200,
-      text: JSON.stringify([[['实时机翻台词']]]),
+      text: JSON.stringify(['实时机翻台词']),
     }));
     const translator = new RuntimeTranslator({
       cache: new MemoryCache(),

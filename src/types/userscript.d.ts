@@ -12,6 +12,7 @@ declare global {
     url: string;
     headers?: Record<string, string>;
     data?: string;
+    anonymous?: boolean;
     timeout?: number;
     responseType?: 'text' | 'json' | 'arraybuffer' | 'blob';
     onload?: (response: {

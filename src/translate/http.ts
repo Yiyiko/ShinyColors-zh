@@ -4,6 +4,7 @@ export interface MtHttpRequest {
   headers?: Record<string, string>;
   body?: string;
   timeoutMs?: number;
+  anonymous?: boolean;
 }
 
 export interface MtHttpResponse {
@@ -20,6 +21,7 @@ function gmRequest(req: MtHttpRequest): Promise<MtHttpResponse> {
       url: req.url,
       headers: req.headers,
       data: req.body,
+      anonymous: req.anonymous,
       timeout: req.timeoutMs ?? 30_000,
       onload: (res) => {
         resolve({ status: res.status, text: res.responseText });

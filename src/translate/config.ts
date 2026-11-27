@@ -39,12 +39,12 @@ export const MT_CONFIG_STORAGE_KEY = 'sczh:mt-config:v1';
 export const MT_PRESETS: readonly MtPreset[] = [
   {
     id: 'free-google',
-    label: '免 Key 免费保底（Google 神经翻译）',
+    label: '免 Key 免费保底（多源自动防限流）',
     protocol: 'free-google',
-    defaultBaseUrl: 'https://translate.googleapis.com/translate_a/single',
-    defaultModel: 'google-nmt-free',
+    defaultBaseUrl: 'https://clients5.google.com/translate_a/t',
+    defaultModel: 'multi-free-nmt',
     requiresKey: false,
-    hint: '零配置开箱即用，自动配合 283 角色与术语表修正；如可直连 Google 即可直接保底使用。',
+    hint: '零配置开箱即用：自动依次尝试 Google Chrome 扩展源 → Google GTX → MyMemory 独立源（防 429 限流，内置 283 角色译名修正）。',
   },
   {
     id: 'gemini',

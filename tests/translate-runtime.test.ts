@@ -57,16 +57,23 @@ describe('Runtime machine translation (custom API + free fallback)', () => {
     expect(http).toHaveBeenCalledTimes(1);
   });
 
-  it('falls back to zero-key free Google NMT when custom API fails or API key is empty', async () => {
+  it('falls back across clients5 -> gtx -> MyMemory when primary API and Google endpoints return 429', async () => {
     const http = vi.fn<MtHttpClient>(async (req) => {
       if (req.url.includes('generativelanguage.googleapis.com')) {
         return { status: 429, text: 'quota exceeded' };
       }
+      if (req.url.includes('clients5.google.com')) {
+        return { status: 429, text: 'rate limited' };
+      }
       if (req.url.includes('translate.googleapis.com')) {
-        expect(req.method).toBe('POST');
+        return { status: 429, text: 'rate limited' };
+      }
+      if (req.url.includes('api.mymemory.translated.net')) {
         return {
           status: 200,
-          text: JSON.stringify([[['[0] 制片人，Toori早上好\n[1] 283 Pro 加油']]]),
+          text: JSON.stringify({
+            responseData: { translatedText: '[0] 制片人，Toori早上好\n[1] 283 Pro 加油' },
+          }),
         };
       }
       throw new Error(`unexpected url ${req.url}`);
@@ -95,11 +102,14 @@ describe('Runtime machine translation (custom API + free fallback)', () => {
     expect(res?.texts.get(1)).toBe('283事务所 加油');
   });
 
-  it('batch-translates and caches untranslated voice bubbles', async () => {
-    const http = vi.fn<MtHttpClient>(async () => ({
-      status: 200,
-      text: JSON.stringify([[['【0】你好制作人\n【1】今天也很开心']]]),
-    }));
+  it('batch-translates and caches untranslated voice bubbles via clients5 native array', async () => {
+    const http = vi.fn<MtHttpClient>(async (req) => {
+      expect(req.url).toContain('clients5.google.com');
+      return {
+        status: 200,
+        text: JSON.stringify(['你好制作人', '今天也很开心']),
+      };
+    });
 
     const translator = new RuntimeTranslator({
       cache: new MemoryCache(),

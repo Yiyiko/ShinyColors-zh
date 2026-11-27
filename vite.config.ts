@@ -26,7 +26,9 @@ export default defineConfig({
         connect: [
           `${REPO_OWNER}.github.io`,
           'cdn.jsdelivr.net',
+          'clients5.google.com',
           'translate.googleapis.com',
+          'api.mymemory.translated.net',
           'generativelanguage.googleapis.com',
           'open.bigmodel.cn',
           'api.siliconflow.cn',
