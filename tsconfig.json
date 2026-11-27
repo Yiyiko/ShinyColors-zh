@@ -13,5 +13,12 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "pipeline/**/*.ts", "tests/**/*.ts", "vite.config.ts"]
+  "include": [
+    "src/**/*.ts",
+    "pipeline/**/*.ts",
+    "scripts/**/*.ts",
+    "tests/**/*.ts",
+    "vite.config.ts",
+    "vite.recon.config.ts"
+  ]
 }

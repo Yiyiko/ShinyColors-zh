@@ -12,6 +12,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:recon": "vite build --config vite.recon.config.ts",
+    "dev:recon": "pnpm run build:recon && tsx scripts/dev-server.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

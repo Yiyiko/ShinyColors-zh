@@ -1,2 +1,9 @@
-// P2: diagnostics panel and userscript menu UI
-export {};
+export {
+  DiagnosticsPanel,
+  DiagnosticsStore,
+  type DiagnosticsSnapshot,
+  type HookDiagEntry,
+  type HookStatus,
+  type StoryCoverageEntry,
+} from './diagnostics-panel';
+export { registerUserscriptMenus, type MenuActions } from './menu';
