@@ -126,4 +126,38 @@ describe('Runtime machine translation (custom API + free fallback)', () => {
     expect(map2.get('こんにちはプロデューサー')).toBe('你好制作人');
     expect(http).toHaveBeenCalledTimes(1);
   });
+
+  it('attaches a stable per-session x-opencode-session header for opencode.ai endpoints', async () => {
+    const seenSessions: string[] = [];
+    const http = vi.fn<MtHttpClient>(async (req) => {
+      expect(req.url).toBe('https://opencode.ai/zen/go/v1/chat/completions');
+      const sid = req.headers?.['x-opencode-session'];
+      expect(typeof sid).toBe('string');
+      expect(sid!.length).toBeGreaterThan(8);
+      seenSessions.push(sid!);
+      return {
+        status: 200,
+        text: JSON.stringify({ choices: [{ message: { content: '["测试成功"]' } }] }),
+      };
+    });
+
+    const translator = new RuntimeTranslator({
+      cache: new MemoryCache(),
+      http,
+      config: {
+        ...createDefaultMtConfig(),
+        provider: 'openai-compat',
+        baseUrl: 'https://opencode.ai/zen/go/v1/chat/completions',
+        apiKey: 'oc-key',
+        model: 'deepseek-v4.1-flash',
+        fallbackToFree: false,
+      },
+    });
+
+    const r1 = await translator.testConnection();
+    const r2 = await translator.testConnection();
+    expect(r1.ok).toBe(true);
+    expect(r2.ok).toBe(true);
+    expect(seenSessions[0]).toBe(seenSessions[1]);
+  });
 });

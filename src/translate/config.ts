@@ -1,5 +1,6 @@
 export type MtProviderId =
   | 'free-google'
+  | 'opencode-go'
   | 'gemini'
   | 'zhipu'
   | 'siliconflow'
@@ -45,6 +46,15 @@ export const MT_PRESETS: readonly MtPreset[] = [
     defaultModel: 'multi-free-nmt',
     requiresKey: false,
     hint: '零配置开箱即用：自动依次尝试 Google Chrome 扩展源 → Google GTX → MyMemory 独立源（防 429 限流，内置 283 角色译名修正）。',
+  },
+  {
+    id: 'opencode-go',
+    label: 'OpenCode Go 套餐（自动带 Session 头）',
+    protocol: 'openai-compat',
+    defaultBaseUrl: 'https://opencode.ai/zen/go/v1/chat/completions',
+    defaultModel: 'deepseek-v4.1-flash',
+    requiresKey: true,
+    hint: '填入 OpenCode Console 的 Go API Key，脚本会自动附带每次会话唯一的 x-opencode-session 头。',
   },
   {
     id: 'gemini',

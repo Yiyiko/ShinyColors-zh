@@ -117,6 +117,22 @@ export function parseLlmArrayResponse(raw: string, expectedLength: number): stri
   throw new Error(`LLM 返回格式无法解析为长度为 ${expectedLength} 的 JSON 数组`);
 }
 
+let cachedOpenCodeSessionId: string | null = null;
+
+function getOpenCodeSessionId(): string {
+  if (cachedOpenCodeSessionId) return cachedOpenCodeSessionId;
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      cachedOpenCodeSessionId = crypto.randomUUID();
+      return cachedOpenCodeSessionId;
+    }
+  } catch {
+    // Fallback below
+  }
+  cachedOpenCodeSessionId = `sczh-${Date.now().toString(16)}-${Math.random().toString(16).slice(2, 10)}`;
+  return cachedOpenCodeSessionId;
+}
+
 function normalizeOpenAiEndpoint(baseUrl: string): string {
   const trimmed = baseUrl.trim().replace(/\/+$/, '');
   if (/\/chat\/completions$/i.test(trimmed)) return trimmed;
@@ -142,6 +158,9 @@ export async function translateWithOpenAiCompat(options: ProviderTranslateOption
   if (config.provider === 'openrouter') {
     headers['HTTP-Referer'] = 'https://shinycolors.enza.fun/';
     headers['X-Title'] = 'ShinyColors-zh';
+  }
+  if (config.provider === 'opencode-go' || /opencode\.ai/i.test(url)) {
+    headers['x-opencode-session'] = getOpenCodeSessionId();
   }
 
   const systemPrompt = config.customPrompt.trim() || DEFAULT_SYSTEM_PROMPT;

@@ -33,6 +33,7 @@ export default defineConfig({
           'open.bigmodel.cn',
           'api.siliconflow.cn',
           'api.deepseek.com',
+          'opencode.ai',
           'openrouter.ai',
           'api.openai.com',
           'api.interpreter.caiyunai.com',
