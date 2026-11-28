@@ -1,0 +1,16 @@
+{
+  "version": "0.3.3",
+  "generatedAt": "2026-11-28T11:29:34.464Z",
+  "upstreamCommit": "dce164640732863cfd15b9aa318b799669321687",
+  "stats": {
+    "stories": 5612,
+    "upstreamStories": 5612,
+    "localStories": 0,
+    "aiStories": 0,
+    "supersededAiCount": 0,
+    "skippedNoInfoCount": 2,
+    "pictures": 87,
+    "indexedFiles": 233
+  },
+  "supersededAi": []
+}
